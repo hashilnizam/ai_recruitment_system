@@ -1,0 +1,355 @@
+from flask import Flask, request, jsonify
+from flask_cors import CORS
+import threading
+import time
+import json
+from datetime import datetime
+import sys
+import os
+
+# Add src directory to path
+sys.path.append(os.path.join(os.path.dirname(__file__), 'src'))
+
+from config.database import db
+from services.ai_service import AIService
+
+app = Flask(__name__)
+CORS(app, origins=['http://localhost:3000'])
+
+# Initialize AI service
+ai_service = AIService()
+
+# Global variable for tracking processing status
+processing_status = {}
+
+@app.route('/health', methods=['GET'])
+def health_check():
+    """Health check endpoint"""
+    return jsonify({
+        'success': True,
+        'message': 'AI Service is running',
+        'timestamp': datetime.now().isoformat(),
+        'version': '1.0.0'
+    })
+
+@app.route('/api/test-connection', methods=['GET'])
+def test_connection():
+    """Test OpenAI API connection"""
+    try:
+        # Simple test call to OpenAI
+        response = ai_service.client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": "Hello"}],
+            max_tokens=5
+        )
+        return jsonify({
+            'success': True,
+            'message': 'OpenAI API connection successful'
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'message': f'OpenAI API connection failed: {str(e)}'
+        }), 500
+
+@app.route('/api/rank-candidates', methods=['POST'])
+def rank_candidates():
+    """Rank candidates for a specific job using AI"""
+    try:
+        data = request.get_json()
+        job_id = data.get('job_id')
+        
+        if not job_id:
+            return jsonify({
+                'success': False,
+                'message': 'Job ID is required'
+            }), 400
+        
+        # Check if already processing
+        if job_id in processing_status and processing_status[job_id]['status'] in ['queued', 'processing']:
+            return jsonify({
+                'success': False,
+                'message': 'Ranking is already in progress for this job'
+            }), 400
+        
+        # Start processing in background
+        thread = threading.Thread(target=process_ranking, args=(job_id,))
+        thread.daemon = True
+        thread.start()
+        
+        return jsonify({
+            'success': True,
+            'message': 'Ranking process started',
+            'job_id': job_id
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'message': f'Failed to start ranking: {str(e)}'
+        }), 500
+
+@app.route('/api/ranking-status/<int:job_id>', methods=['GET'])
+def get_ranking_status(job_id):
+    """Get ranking status for a specific job"""
+    try:
+        # Get status from database
+        query = """
+        SELECT status, progress, total_candidates, error_message, started_at, completed_at
+        FROM processing_jobs 
+        WHERE job_id = %s 
+        ORDER BY created_at DESC 
+        LIMIT 1
+        """
+        result = db.execute_query(query, (job_id,))
+        
+        if result:
+            status_data = result[0]
+            return jsonify({
+                'success': True,
+                'data': status_data
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'message': 'No ranking process found for this job'
+            }), 404
+            
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'message': f'Failed to get ranking status: {str(e)}'
+        }), 500
+
+def process_ranking(job_id):
+    """Process ranking for all candidates of a job"""
+    try:
+        # Update processing status to processing
+        processing_status[job_id] = {
+            'status': 'processing',
+            'progress': 0,
+            'total_candidates': 0,
+            'started_at': datetime.now()
+        }
+        
+        # Update database
+        db.execute_query("""
+            INSERT INTO processing_jobs (job_id, status, started_at)
+            VALUES (%s, 'processing', %s)
+            ON DUPLICATE KEY UPDATE 
+            status = 'processing', 
+            started_at = %s,
+            progress = 0
+        """, (job_id, datetime.now(), datetime.now()))
+        
+        # Get job details
+        job_query = """
+        SELECT title, required_skills, required_education, required_experience
+        FROM jobs WHERE id = %s
+        """
+        job_result = db.execute_query(job_query, (job_id,))
+        
+        if not job_result:
+            raise Exception('Job not found')
+        
+        job_data = job_result[0]
+        job_data['required_skills'] = json.loads(job_data['required_skills'])
+        job_data['required_education'] = json.loads(job_data['required_education'])
+        job_data['required_experience'] = json.loads(job_data['required_experience'])
+        
+        # Get all applications for this job
+        apps_query = """
+        SELECT a.id, a.candidate_id, u.first_name, u.last_name, u.email
+        FROM applications a
+        JOIN users u ON a.candidate_id = u.id
+        WHERE a.job_id = %s AND a.status = 'pending'
+        """
+        applications = db.execute_query(apps_query, (job_id,))
+        
+        total_candidates = len(applications)
+        
+        # Update total candidates
+        db.execute_query("""
+            UPDATE processing_jobs 
+            SET total_candidates = %s 
+            WHERE job_id = %s AND status = 'processing'
+        """, (total_candidates, job_id))
+        
+        rankings = []
+        
+        for i, application in enumerate(applications):
+            try:
+                # Get candidate details
+                candidate_data = get_candidate_data(application['id'])
+                
+                # Calculate scores
+                skill_score = ai_service.calculate_skill_match(
+                    candidate_data['skills'], 
+                    job_data['required_skills']
+                )
+                
+                education_score = ai_service.calculate_education_match(
+                    candidate_data['education'], 
+                    job_data['required_education']
+                )
+                
+                experience_score = ai_service.calculate_experience_match(
+                    candidate_data['experience'], 
+                    job_data['required_experience']
+                )
+                
+                # Calculate total score (40% skills, 30% education, 30% experience)
+                total_score = (skill_score * 0.4) + (education_score * 0.3) + (experience_score * 0.3)
+                
+                scores = {
+                    'skill_score': skill_score,
+                    'education_score': education_score,
+                    'experience_score': experience_score,
+                    'total_score': total_score
+                }
+                
+                # Generate AI feedback
+                feedback = ai_service.generate_feedback(candidate_data, job_data, scores)
+                
+                # Store ranking
+                ranking_query = """
+                INSERT INTO rankings 
+                (job_id, application_id, skill_score, education_score, experience_score, total_score, rank_position, score_breakdown)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                ON DUPLICATE KEY UPDATE
+                skill_score = VALUES(skill_score),
+                education_score = VALUES(education_score),
+                experience_score = VALUES(experience_score),
+                total_score = VALUES(total_score),
+                score_breakdown = VALUES(score_breakdown)
+                """
+                db.execute_query(ranking_query, (
+                    job_id, 
+                    application['id'], 
+                    skill_score, 
+                    education_score, 
+                    experience_score, 
+                    total_score, 
+                    0,  # Will be updated after sorting
+                    json.dumps(scores)
+                ))
+                
+                # Store feedback
+                feedback_query = """
+                INSERT INTO feedback 
+                (application_id, strengths, missing_skills, suggestions, overall_assessment)
+                VALUES (%s, %s, %s, %s, %s)
+                ON DUPLICATE KEY UPDATE
+                strengths = VALUES(strengths),
+                missing_skills = VALUES(missing_skills),
+                suggestions = VALUES(suggestions),
+                overall_assessment = VALUES(overall_assessment)
+                """
+                db.execute_query(feedback_query, (
+                    application['id'],
+                    feedback['strengths'],
+                    feedback['missing_skills'],
+                    feedback['suggestions'],
+                    feedback['overall_assessment']
+                ))
+                
+                rankings.append({
+                    'application_id': application['id'],
+                    'total_score': total_score
+                })
+                
+                # Update progress
+                progress = int(((i + 1) / total_candidates) * 100)
+                db.execute_query("""
+                    UPDATE processing_jobs 
+                    SET progress = %s 
+                    WHERE job_id = %s AND status = 'processing'
+                """, (progress, job_id))
+                
+                # Small delay to prevent overwhelming the API
+                time.sleep(0.5)
+                
+            except Exception as e:
+                print(f"Error processing application {application['id']}: {e}")
+                continue
+        
+        # Update rankings with positions
+        rankings.sort(key=lambda x: x['total_score'], reverse=True)
+        for position, ranking in enumerate(rankings, 1):
+            db.execute_query("""
+                UPDATE rankings 
+                SET rank_position = %s 
+                WHERE job_id = %s AND application_id = %s
+            """, (position, job_id, ranking['application_id']))
+        
+        # Update application statuses
+        db.execute_query("""
+            UPDATE applications 
+            SET status = 'ranked' 
+            WHERE job_id = %s AND status = 'pending'
+        """, (job_id,))
+        
+        # Mark processing as completed
+        db.execute_query("""
+            UPDATE processing_jobs 
+            SET status = 'completed', completed_at = %s, progress = 100
+            WHERE job_id = %s AND status = 'processing'
+        """, (datetime.now(), job_id))
+        
+        processing_status[job_id] = {
+            'status': 'completed',
+            'progress': 100,
+            'total_candidates': total_candidates,
+            'completed_at': datetime.now()
+        }
+        
+        print(f"✅ Ranking completed for job {job_id}. Processed {total_candidates} candidates.")
+        
+    except Exception as e:
+        print(f"❌ Ranking failed for job {job_id}: {e}")
+        
+        # Mark processing as failed
+        db.execute_query("""
+            UPDATE processing_jobs 
+            SET status = 'failed', error_message = %s, completed_at = %s
+            WHERE job_id = %s AND status = 'processing'
+        """, (str(e), datetime.now(), job_id))
+        
+        processing_status[job_id] = {
+            'status': 'failed',
+            'error_message': str(e),
+            'completed_at': datetime.now()
+        }
+
+def get_candidate_data(application_id):
+    """Get complete candidate data for an application"""
+    # Get skills
+    skills_query = """
+    SELECT skill_name, proficiency_level, years_of_experience
+    FROM skills WHERE application_id = %s
+    """
+    skills = db.execute_query(skills_query, (application_id,))
+    
+    # Get education
+    education_query = """
+    SELECT degree, field_of_study, institution, graduation_year, gpa
+    FROM education WHERE application_id = %s
+    """
+    education = db.execute_query(education_query, (application_id,))
+    
+    # Get experience
+    experience_query = """
+    SELECT job_title, company, duration_months, start_date, end_date, is_current, description
+    FROM experience WHERE application_id = %s
+    """
+    experience = db.execute_query(experience_query, (application_id,))
+    
+    return {
+        'skills': skills,
+        'education': education,
+        'experience': experience
+    }
+
+if __name__ == '__main__':
+    print("🤖 AI Service starting on port 5001")
+    app.run(host='0.0.0.0', port=5001, debug=True)
