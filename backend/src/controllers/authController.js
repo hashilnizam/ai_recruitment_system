@@ -97,11 +97,14 @@ const login = async (req, res) => {
     const { email, password } = req.body;
 
     // Get user
-    const [users] = await db.query(
+    const users = await db.query(
       `SELECT id, email, password_hash, first_name, last_name, role, company_name, phone, is_active
        FROM users WHERE email = ?`,
       [email]
     );
+
+    console.log('Login query result:', users); // Debug log
+    console.log('Users array length:', users.length); // Debug log
 
     if (users.length === 0) {
       return res.status(401).json({
@@ -111,6 +114,8 @@ const login = async (req, res) => {
     }
 
     const user = users[0];
+    console.log('User object:', user); // Debug log
+    console.log('User is_active:', user.is_active); // Debug log
 
     // Check if account is active
     if (!user.is_active) {

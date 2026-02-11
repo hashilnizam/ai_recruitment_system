@@ -39,7 +39,7 @@ export default function CandidatesPage() {
       
       // Fetch recruiter's jobs
       const jobsResponse = await jobsAPI.getJobs({ recruiterId: user?.id });
-      const jobsList = jobsResponse.data.data;
+      const jobsList = jobsResponse.data?.data || [];
       setJobs(jobsList);
 
       // Fetch all applications for all jobs
@@ -47,7 +47,7 @@ export default function CandidatesPage() {
       for (const job of jobsList) {
         try {
           const appsResponse = await applicationsAPI.getJobApplications(job.id);
-          const applications = appsResponse.data.data;
+          const applications = appsResponse.data?.data || [];
           
           applications.forEach((app: any) => {
             allCandidates.push({
@@ -64,6 +64,9 @@ export default function CandidatesPage() {
       setCandidates(allCandidates);
     } catch (error) {
       console.error('Error fetching data:', error);
+      // Ensure jobs is never undefined
+      setJobs([]);
+      setCandidates([]);
     } finally {
       setLoading(false);
     }
@@ -276,11 +279,15 @@ export default function CandidatesPage() {
                 className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               >
                 <option value="all">All Jobs</option>
-                {jobs.map((job: any) => (
-                  <option key={job.id} value={job.id}>
-                    {job.title}
-                  </option>
-                ))}
+                {loading ? (
+                  <option value="">Loading jobs...</option>
+                ) : (
+                  (jobs || []).map((job: any) => (
+                    <option key={job.id} value={job.id}>
+                      {job.title}
+                    </option>
+                  ))
+                )}
               </select>
             </div>
           </div>

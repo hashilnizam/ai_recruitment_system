@@ -6,9 +6,10 @@ import JobCard from '@/components/JobCard';
 import LoadingSpinner from '@/components/LoadingSpinner';
 import { jobsAPI } from '@/lib/api';
 import { SearchIcon, BriefcaseIcon, RocketIcon } from '@/components/Icons';
+import { Job } from '@/types';
 
 export default function BrowseJobsPage() {
-  const [jobs, setJobs] = useState([]);
+  const [jobs, setJobs] = useState<Job[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState('all');
@@ -20,24 +21,71 @@ export default function BrowseJobsPage() {
   const fetchJobs = async () => {
     try {
       setLoading(true);
+      console.log('🔄 Fetching jobs...');
       const response = await jobsAPI.getJobs({ status: 'published', limit: 50 });
-      setJobs(response.data.data);
+      console.log('📊 Full API response:', response);
+      console.log('📋 Response type:', typeof response);
+      console.log('📋 Response is array:', Array.isArray(response));
+      
+      // The API client returns the data directly, not wrapped in response.data
+      let rawJobs = [];
+      if (Array.isArray(response)) {
+        rawJobs = response;
+      } else if (response && Array.isArray(response.data)) {
+        rawJobs = response.data;
+      } else if (response && response.success && Array.isArray(response.data)) {
+        rawJobs = response.data;
+      }
+      
+      console.log('📋 Raw jobs count:', rawJobs.length);
+      console.log('📋 Raw jobs sample:', rawJobs[0]);
+      
+      const transformedJobs = rawJobs.map((job: any) => {
+        console.log('🔄 Transforming job:', job.id, job.title);
+        return {
+          id: job.id,
+          recruiterId: job.recruiter_id,
+          title: job.title,
+          description: job.description,
+          requiredSkills: JSON.parse(job.required_skills || '[]'),
+          requiredEducation: JSON.parse(job.required_education || '[]'),
+          requiredExperience: JSON.parse(job.required_experience || '{}'),
+          status: job.status,
+          location: job.location,
+          salaryRange: job.salary_range,
+          employmentType: job.employment_type,
+          createdAt: job.created_at,
+          updatedAt: job.updated_at,
+          publishedAt: job.published_at,
+          applicationCount: job.application_count
+        };
+      });
+      
+      console.log('📋 Transformed jobs data:', transformedJobs);
+      console.log('📋 Transformed jobs count:', transformedJobs.length);
+      setJobs(transformedJobs);
     } catch (error) {
-      console.error('Error fetching jobs:', error);
+      console.error('❌ Error fetching jobs:', error);
+      setJobs([]); // Set empty array on error
     } finally {
       setLoading(false);
     }
   };
 
-  const filteredJobs = jobs.filter((job: any) => {
+  // Compute filtered jobs
+  const filteredJobs = jobs.filter((job: Job) => {
     const matchesSearch = job.title.toLowerCase().includes(search.toLowerCase()) ||
-                         job.description.toLowerCase().includes(search.toLowerCase()) ||
-                         job.company_name?.toLowerCase().includes(search.toLowerCase());
+                         job.description.toLowerCase().includes(search.toLowerCase());
     
-    const matchesFilter = filter === 'all' || job.employment_type === filter;
+    const matchesFilter = filter === 'all' || job.employmentType === filter;
     
     return matchesSearch && matchesFilter;
   });
+
+  console.log('🔍 Jobs state:', jobs);
+  console.log('📝 Filtered jobs:', filteredJobs);
+  console.log('🔎 Search term:', search);
+  console.log('🎯 Filter:', filter);
 
   return (
     <Layout>

@@ -4,30 +4,65 @@ const db = require('../config/database');
 const { authenticateToken, authorizeRole } = require('../middleware/auth');
 const requireRecruiter = authorizeRole('recruiter');
 
-// Get all jobs for the logged-in recruiter
-router.get('/', authenticateToken, requireRecruiter, async (req, res) => {
+// Get all jobs (public endpoint for candidates, recruiter-specific for recruiters)
+router.get('/', authenticateToken, async (req, res) => {
   try {
-    const recruiterId = req.user.id;
+    const user = req.user;
+    console.log('Fetching jobs for user:', user.id, user.role);
     
-    // Get jobs posted by this recruiter
-    const [jobs] = await db.execute(
-      `SELECT j.*, 
-              COUNT(a.id) as application_count,
-              COUNT(CASE WHEN r.total_score IS NOT NULL THEN 1 END) as ranked_count
-       FROM jobs j 
-       LEFT JOIN applications a ON j.id = a.job_id 
-       LEFT JOIN rankings r ON a.id = r.application_id
-       WHERE j.recruiter_id = ? 
-       GROUP BY j.id 
-       ORDER BY j.created_at DESC`,
-      [recruiterId]
-    );
+    if (user.role === 'recruiter') {
+      // Recruiters see their own jobs
+      const recruiterId = user.id;
+      const jobs = await db.query(
+        `SELECT j.*, 
+                COUNT(a.id) as application_count,
+                COUNT(CASE WHEN r.total_score IS NOT NULL THEN 1 END) as ranked_count
+         FROM jobs j 
+         LEFT JOIN applications a ON j.id = a.job_id 
+         LEFT JOIN rankings r ON a.id = r.application_id
+         WHERE j.recruiter_id = ? 
+         GROUP BY j.id 
+         ORDER BY j.created_at DESC`,
+        [recruiterId]
+      );
 
-    res.json({
-      success: true,
-      data: jobs,
-      count: jobs.length
-    });
+      console.log('Jobs query result:', jobs);
+      console.log('Jobs length:', jobs.length);
+
+      res.json({
+        success: true,
+        data: jobs,
+        count: jobs.length
+      });
+    } else if (user.role === 'candidate') {
+      // Candidates see only published jobs
+      const jobs = await db.query(
+        `SELECT j.*, 
+                u.first_name as recruiter_first_name,
+                u.last_name as recruiter_last_name,
+                u.company_name,
+                COUNT(a.id) as application_count
+         FROM jobs j 
+         LEFT JOIN users u ON j.recruiter_id = u.id
+         LEFT JOIN applications a ON j.id = a.job_id 
+         WHERE j.status = 'published'
+         GROUP BY j.id 
+         ORDER BY j.created_at DESC`
+      );
+
+      console.log('Published jobs for candidate:', jobs);
+
+      res.json({
+        success: true,
+        data: jobs,
+        count: jobs.length
+      });
+    } else {
+      res.status(403).json({
+        success: false,
+        message: 'Access denied'
+      });
+    }
   } catch (error) {
     console.error('Error fetching jobs:', error);
     res.status(500).json({
@@ -66,17 +101,21 @@ router.post('/', authenticateToken, requireRecruiter, async (req, res) => {
     const requiredEducation = [];
     const requiredExperience = { min_years: experience_level === 'entry' ? 0 : experience_level === 'mid' ? 3 : experience_level === 'senior' ? 5 : 8 };
 
-    const [result] = await db.execute(
+    const result = await db.query(
       `INSERT INTO jobs (
         title, description, required_skills, required_education, required_experience,
         recruiter_id, status, location, employment_type, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, 'draft', ?, ?, NOW(), NOW())`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
       [
-        title, description, 
-        JSON.stringify(requiredSkills), 
-        JSON.stringify(requiredEducation), 
+        title,
+        description,
+        JSON.stringify(requiredSkills),
+        JSON.stringify(requiredEducation),
         JSON.stringify(requiredExperience),
-        recruiterId, location, job_type
+        recruiterId,
+        'draft',
+        location,
+        job_type
       ]
     );
 
@@ -99,35 +138,59 @@ router.post('/', authenticateToken, requireRecruiter, async (req, res) => {
 });
 
 // Get job by ID
-router.get('/:id', authenticateToken, requireRecruiter, async (req, res) => {
+router.get('/:id', authenticateToken, async (req, res) => {
   try {
     const jobId = req.params.id;
-    const recruiterId = req.user.id;
+    const user = req.user;
+    console.log('🔍 Fetching job details for job:', jobId, 'user:', user.id, 'role:', user.role);
 
-    const [jobs] = await db.execute(
-      'SELECT * FROM jobs WHERE id = ? AND recruiter_id = ?',
-      [jobId, recruiterId]
-    );
+    let job;
+    
+    if (user.role === 'recruiter') {
+      // Recruiters can only see their own jobs
+      const jobs = await db.query(
+        'SELECT * FROM jobs WHERE id = ? AND recruiter_id = ?',
+        [jobId, user.id]
+      );
+      job = jobs[0];
+    } else if (user.role === 'candidate') {
+      // Candidates can see any published job
+      const jobs = await db.query(
+        'SELECT * FROM jobs WHERE id = ? AND status = ?',
+        [jobId, 'published']
+      );
+      job = jobs[0];
+    } else {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied'
+      });
+    }
 
-    if (jobs.length === 0) {
+    if (!job) {
       return res.status(404).json({
         success: false,
         message: 'Job not found'
       });
     }
 
-    // Get applications for this job
-    const [applications] = await db.execute(
-      `SELECT a.*, u.first_name, u.last_name, u.email
-       FROM applications a
-       JOIN users u ON a.candidate_id = u.id
-       WHERE a.job_id = ?
-       ORDER BY a.ai_score DESC, a.created_at DESC`,
-      [jobId]
-    );
+    // Get applications for this job (only for recruiters)
+    let applications = [];
+    if (user.role === 'recruiter') {
+      applications = await db.query(
+        `SELECT a.*, u.first_name, u.last_name, u.email
+         FROM applications a
+         JOIN users u ON a.candidate_id = u.id
+         WHERE a.job_id = ?
+         ORDER BY a.applied_at DESC`,
+        [jobId]
+      );
+    }
 
-    const job = jobs[0];
+    // Add applications to job object
     job.applications = applications;
+
+    console.log('✅ Job details fetched successfully:', job.id, job.title);
 
     res.json({
       success: true,
@@ -161,7 +224,7 @@ router.put('/:id', authenticateToken, requireRecruiter, async (req, res) => {
     } = req.body;
 
     // Check if job belongs to this recruiter
-    const [jobs] = await db.execute(
+    const jobs = await db.query(
       'SELECT id FROM jobs WHERE id = ? AND recruiter_id = ?',
       [jobId, recruiterId]
     );
@@ -173,7 +236,7 @@ router.put('/:id', authenticateToken, requireRecruiter, async (req, res) => {
       });
     }
 
-    await db.execute(
+    await db.query(
       `UPDATE jobs SET 
         title = ?, description = ?, requirements = ?, location = ?,
         job_type = ?, salary_min = ?, salary_max = ?, experience_level = ?,
@@ -207,7 +270,7 @@ router.delete('/:id', authenticateToken, requireRecruiter, async (req, res) => {
     const recruiterId = req.user.id;
 
     // Check if job belongs to this recruiter
-    const [jobs] = await db.execute(
+    const jobs = await db.query(
       'SELECT id FROM jobs WHERE id = ? AND recruiter_id = ?',
       [jobId, recruiterId]
     );
@@ -220,10 +283,10 @@ router.delete('/:id', authenticateToken, requireRecruiter, async (req, res) => {
     }
 
     // Delete applications first
-    await db.execute('DELETE FROM applications WHERE job_id = ?', [jobId]);
+    await db.query('DELETE FROM applications WHERE job_id = ?', [jobId]);
     
     // Delete job
-    await db.execute('DELETE FROM jobs WHERE id = ?', [jobId]);
+    await db.query('DELETE FROM jobs WHERE id = ?', [jobId]);
 
     res.json({
       success: true,
@@ -245,7 +308,7 @@ router.post('/:id/publish', authenticateToken, requireRecruiter, async (req, res
     const recruiterId = req.user.id;
 
     // Check if job belongs to this recruiter
-    const [jobs] = await db.execute(
+    const jobs = await db.query(
       'SELECT id FROM jobs WHERE id = ? AND recruiter_id = ?',
       [jobId, recruiterId]
     );
@@ -257,7 +320,7 @@ router.post('/:id/publish', authenticateToken, requireRecruiter, async (req, res
       });
     }
 
-    await db.execute(
+    await db.query(
       'UPDATE jobs SET status = ?, published_at = NOW(), updated_at = NOW() WHERE id = ?',
       ['published', jobId]
     );
@@ -279,30 +342,34 @@ router.post('/:id/publish', authenticateToken, requireRecruiter, async (req, res
 router.get('/stats/dashboard', authenticateToken, requireRecruiter, async (req, res) => {
   try {
     const recruiterId = req.user.id;
+    console.log('Fetching dashboard stats for recruiter:', recruiterId);
 
     // Get total jobs
-    const [totalJobs] = await db.execute(
+    const totalJobs = await db.query(
       'SELECT COUNT(*) as count FROM jobs WHERE recruiter_id = ?',
       [recruiterId]
     );
+    console.log('Total jobs result:', totalJobs);
 
     // Get active jobs
-    const [activeJobs] = await db.execute(
+    const activeJobs = await db.query(
       'SELECT COUNT(*) as count FROM jobs WHERE recruiter_id = ? AND status = ?',
       [recruiterId, 'published']
     );
+    console.log('Active jobs result:', activeJobs);
 
     // Get total applications
-    const [totalApplications] = await db.execute(
+    const totalApplications = await db.query(
       `SELECT COUNT(*) as count 
        FROM applications a 
        JOIN jobs j ON a.job_id = j.id 
        WHERE j.recruiter_id = ?`,
       [recruiterId]
     );
+    console.log('Total applications result:', totalApplications);
 
     // Get pending rankings (applications without AI score)
-    const [pendingRankings] = await db.execute(
+    const pendingRankings = await db.query(
       `SELECT COUNT(*) as count 
        FROM applications a 
        JOIN jobs j ON a.job_id = j.id 
@@ -311,14 +378,15 @@ router.get('/stats/dashboard', authenticateToken, requireRecruiter, async (req, 
        )`,
       [recruiterId]
     );
+    console.log('Pending rankings result:', pendingRankings);
 
     res.json({
       success: true,
       data: {
-        totalJobs: totalJobs[0].count,
-        activeJobs: activeJobs[0].count,
-        totalApplications: totalApplications[0].count,
-        pendingRankings: pendingRankings[0].count
+        totalJobs: totalJobs[0]?.count || 0,
+        activeJobs: activeJobs[0]?.count || 0,
+        totalApplications: totalApplications[0]?.count || 0,
+        pendingRankings: pendingRankings[0]?.count || 0
       }
     });
   } catch (error) {

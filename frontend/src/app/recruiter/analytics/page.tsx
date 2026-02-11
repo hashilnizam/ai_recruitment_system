@@ -24,99 +24,114 @@ export default function AnalyticsPage() {
   const { user } = useAuth();
   const router = useRouter();
   const [loading, setLoading] = useState(true);
-  interface AnalyticsData {
-  overview: {
-    totalJobs: number;
-    activeJobs: number;
-    totalApplications: number;
-    avgScore: number;
-    conversionRate: number;
-  };
-  jobPerformance: Array<{
-    jobTitle: string;
-    applications: number;
-    avgScore: number;
+  const [analytics, setAnalytics] = useState<any>(null);
+  const [jobs, setJobs] = useState<any[]>([]);
+  const [allApplications, setAllApplications] = useState<any[]>([]);
+
+  interface Job {
+    id: number;
+    title: string;
     status: string;
-  }>;
-  applicationTrends: Array<{
-    month: string;
-    applications: number;
-  }>;
-  topSkills: Array<{
-    skill: string;
-    count: number;
-  }>;
-  scoringInsights: {
-    highScorers: number;
-    mediumScorers: number;
-    lowScorers: number;
-  };
-}
+    location?: string;
+    employment_type?: string;
+    salary_min?: number;
+    salary_max?: number;
+    experience_level?: string;
+    created_at: string;
+    updated_at: string;
+  }
 
-const [analytics, setAnalytics] = useState<AnalyticsData>({
-  overview: {
-    totalJobs: 0,
-    activeJobs: 0,
-    totalApplications: 0,
-    avgScore: 0,
-    conversionRate: 0,
-  },
-  jobPerformance: [],
-  applicationTrends: [],
-  topSkills: [],
-  scoringInsights: {
-    highScorers: 0,
-    mediumScorers: 0,
-    lowScorers: 0,
-  },
-});
+  interface Application {
+    id: number;
+    job_id: number;
+    candidate_id: number;
+    status: string;
+    applied_at: string;
+    updated_at: string;
+    total_score?: number;
+    rank_position?: number;
+    skill_score?: number;
+    education_score?: number;
+    experience_score?: number;
+    skills?: Array<{
+      skill_name: string;
+      proficiency_level: string;
+      years_of_experience?: number;
+    }>;
+  }
 
-  useEffect(() => {
-    if (user?.role !== 'recruiter') {
-      router.push('/');
-      return;
-    }
-    fetchAnalytics();
-  }, [user, router]);
+  interface AnalyticsData {
+    overview: {
+      totalJobs: number;
+      activeJobs: number;
+      totalApplications: number;
+      avgScore: number;
+      conversionRate: number;
+    };
+    jobPerformance: Array<{
+      jobTitle: string;
+      applications: number;
+      avgScore: number;
+      status: string;
+    }>;
+    applicationTrends: Array<{
+      month: string;
+      applications: number;
+    }>;
+    topSkills: Array<{
+      skill: string;
+      count: number;
+    }>;
+    scoringInsights: {
+      highScorers: number;
+      mediumScorers: number;
+      lowScorers: number;
+    };
+  }
 
   const fetchAnalytics = async () => {
     try {
       setLoading(true);
+      console.log('🔄 Starting analytics fetch for user:', user?.id, user?.role);
       
       // Fetch jobs
       const jobsResponse = await jobsAPI.getJobs({ recruiterId: user?.id });
-      const jobs = jobsResponse.data.data;
+      console.log('📊 Jobs API response:', jobsResponse.data);
+      const jobsList = jobsResponse.data?.data || [];
+      console.log('📋 Jobs list:', jobsList);
+      setJobs(jobsList);
 
       // Fetch all applications
-      let allApplications: any[] = [];
-      let totalScore = 0;
+      let applications: any[] = [];
       let rankedCount = 0;
       const skillsMap: Record<string, number> = {};
 
-      for (const job of jobs) {
+      for (const job of jobsList) {
         try {
+          console.log(`🔍 Fetching applications for job ${job.id}`);
           const appsResponse = await applicationsAPI.getJobApplications(job.id);
-          const applications = appsResponse.data.data;
-          allApplications = [...allApplications, ...applications];
-
-          // Collect skills and scores
-          applications.forEach((app: any) => {
-            if (app.total_score) {
-              totalScore += app.total_score;
-              rankedCount++;
+          console.log(`📄 Applications for job ${job.id}:`, appsResponse.data);
+          const jobApplications = appsResponse.data?.data || [];
+          applications = [...applications, ...jobApplications];
+          
+          jobApplications.forEach((app: any) => {
+            if (app.skills) {
+              app.skills.forEach((skill: any) => {
+                skillsMap[skill.skill_name] = (skillsMap[skill.skill_name] || 0) + 1;
+              });
             }
-            app.skills?.forEach((skill: any) => {
-              skillsMap[skill.skill_name] = (skillsMap[skill.skill_name] || 0) + 1;
-            });
+            if (app.total_score) rankedCount++;
           });
         } catch (error) {
-          console.error('Error fetching applications:', error);
+          console.error(`Error fetching applications for job ${job.id}:`, error);
         }
       }
 
+      setAllApplications(applications);
+
       // Calculate job performance
-      const jobPerformance = jobs.map((job: any) => {
-        const jobApps = allApplications.filter((app: any) => app.job_id === job.id);
+      const jobPerformance = (jobsList || []).map((job: Job) => {
+        const jobApps = applications.filter((app: Application) => app.job_id === job.id);
         const avgScore = jobApps.length > 0
           ? jobApps.reduce((sum, app) => sum + (app.total_score || 0), 0) / jobApps.length
           : 0;
@@ -127,21 +142,23 @@ const [analytics, setAnalytics] = useState<AnalyticsData>({
           avgScore: Math.round(avgScore),
           status: job.status,
         };
-      }).sort((a: any, b: any) => b.applications - a.applications).slice(0, 5);
+      }).sort((a: { applications: number }, b: { applications: number }) => b.applications - a.applications).slice(0, 5);
 
       // Top skills
       const topSkills = Object.entries(skillsMap)
         .map(([skill, count]) => ({ skill, count }))
-        .sort((a: any, b: any) => b.count - a.count)
+        .sort((a: { count: number }, b: { count: number }) => b.count - a.count)
         .slice(0, 10);
 
       // Calculate overview
       const overview = {
-        totalJobs: jobs.length,
-        activeJobs: jobs.filter((j: any) => j.status === 'published').length,
-        totalApplications: allApplications.length,
-        avgScore: rankedCount > 0 ? Math.round(totalScore / rankedCount) : 0,
-        conversionRate: jobs.length > 0 ? Math.round((allApplications.length / jobs.length) * 100) / 100 : 0,
+        totalJobs: jobsList.length,
+        activeJobs: jobsList.filter((job: Job) => job.status === 'published').length,
+        totalApplications: applications.length,
+        avgScore: applications.length > 0 
+          ? Math.round(applications.reduce((sum, app) => sum + (app.total_score || 0), 0) / applications.length)
+          : 0,
+        conversionRate: rankedCount > 0 ? Math.round((rankedCount / applications.length) * 100) : 0
       };
 
       // Application trends (mock data for now - you can enhance this)
@@ -165,14 +182,57 @@ const [analytics, setAnalytics] = useState<AnalyticsData>({
           lowScorers: allApplications.filter((a: any) => a.total_score > 0 && a.total_score < 60).length,
         },
       });
+      
+      console.log('✅ Analytics data set successfully:', {
+        overview,
+        jobPerformance: jobPerformance.length,
+        topSkills: topSkills.length,
+        applicationsCount: applications.length
+      });
     } catch (error) {
-      console.error('Error fetching analytics:', error);
+      console.error('❌ Error fetching analytics:', error);
+      // Set default analytics data to prevent infinite loading
+      setAnalytics({
+        overview: {
+          totalJobs: 0,
+          activeJobs: 0,
+          totalApplications: 0,
+          avgScore: 0,
+          conversionRate: 0
+        },
+        jobPerformance: [],
+        applicationTrends: [],
+        topSkills: [],
+        scoringInsights: {
+          highScorers: 0,
+          mediumScorers: 0,
+          lowScorers: 0
+        }
+      });
     } finally {
+      console.log('🏁 Analytics fetch completed, setting loading to false');
       setLoading(false);
     }
   };
 
-  if (loading) {
+  useEffect(() => {
+    console.log('🎯 Analytics useEffect triggered:', { user: user?.id, role: user?.role });
+    if (!user) {
+      router.push('/auth/login');
+      return;
+    }
+    
+    if (user.role !== 'recruiter') {
+      console.log('❌ User is not a recruiter, redirecting to candidate dashboard...');
+      router.push('/dashboard/candidate');
+      return;
+    }
+    console.log('✅ User is recruiter, fetching analytics...');
+    fetchAnalytics();
+  }, [user, router]);
+
+  if (loading || !analytics) {
+    console.log('🔄 Still loading or no analytics data:', { loading, analytics });
     return (
       <Layout>
         <LoadingSpinner size="lg" text="Loading analytics..." />

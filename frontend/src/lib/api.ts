@@ -13,6 +13,9 @@ class ApiClient {
       },
     });
 
+    console.log('🔗 API Client baseURL:', this.client.defaults.baseURL);
+    console.log('🔗 Environment variable NEXT_PUBLIC_API_URL:', process.env.NEXT_PUBLIC_API_URL);
+
     // Request interceptor to add auth token
     this.client.interceptors.request.use(
       (config) => {
@@ -20,6 +23,15 @@ class ApiClient {
         if (token) {
           config.headers.Authorization = `Bearer ${token}`;
         }
+        
+        // Don't set Content-Type for FormData - let axios set it automatically
+        if (config.data instanceof FormData) {
+          delete config.headers['Content-Type'];
+        }
+        
+        console.log('🌐 API Request:', config.method?.toUpperCase(), (config.baseURL || '') + (config.url || ''));
+        console.log('📋 Request data type:', config.data instanceof FormData ? 'FormData' : typeof config.data);
+        
         return config;
       },
       (error) => {
@@ -75,8 +87,8 @@ const api = new ApiClient();
 
 // Auth API
 export const authAPI = {
-  login: (credentials: { email: string; password: string }) =>
-    api.post('/auth/login', credentials),
+  login: (email: string, password: string) => 
+    api.post('/api/auth/login', { email, password }),
   
   register: (userData: {
     email: string;
@@ -86,16 +98,16 @@ export const authAPI = {
     role: 'recruiter' | 'candidate';
     companyName?: string;
     phone?: string;
-  }) => api.post('/auth/register', userData),
+  }) => api.post('/api/auth/register', userData),
   
-  getProfile: () => api.get('/auth/me'),
+  getProfile: () => api.get('/api/auth/me'),
   
   updateProfile: (data: {
     firstName: string;
     lastName: string;
     companyName?: string;
     phone?: string;
-  }) => api.put('/auth/profile', data),
+  }) => api.put('/api/auth/profile', data),
 };
 
 // Jobs API
@@ -106,30 +118,36 @@ export const jobsAPI = {
     search?: string;
     limit?: number;
     offset?: number;
-  }) => api.get('/jobs', params),
+  }) => api.get('/api/jobs', params),
   
-  getJob: (id: number) => api.get(`/jobs/${id}`),
+  getJob: (id: number) => api.get(`/api/jobs/${id}`),
   
   createJob: (data: {
     title: string;
     description: string;
-    requiredSkills: string[];
-    requiredEducation: string[];
-    requiredExperience: {
-      minYears: number;
-      preferredRoles: string[];
-    };
-    location?: string;
-    salaryRange?: string;
-    employmentType?: string;
-    status?: string;
-  }) => api.post('/jobs', data),
+    requirements: string;
+    location: string;
+    job_type: string;
+    salary_min: number;
+    salary_max: number;
+    employment_type: string;
+  }) => api.post('/api/jobs', data),
   
-  updateJob: (id: number, data: any) => api.put(`/jobs/${id}`, data),
+  updateJob: (id: number, data: any) => api.put(`/api/jobs/${id}`, data),
   
-  deleteJob: (id: number) => api.delete(`/jobs/${id}`),
+  deleteJob: (id: number) => api.delete(`/api/jobs/${id}`),
   
-  getJobStats: (id: number) => api.get(`/jobs/${id}/stats`),
+  publishJob: (id: number) => api.post(`/api/jobs/${id}/publish`),
+  
+  getJobApplications: (jobId: number) => api.get(`/api/jobs/${jobId}/applications`),
+  
+  getRecommendations: () => api.get('/api/jobs/recommendations'),
+  
+  getInsights: () => api.get('/api/jobs/insights'),
+  
+  getTrends: () => api.get('/api/jobs/trends'),
+  
+  getDashboardStats: () => api.get('/api/jobs/dashboard/stats'),
 };
 
 // Applications API
@@ -141,58 +159,51 @@ export const applicationsAPI = {
       proficiencyLevel?: string;
       yearsOfExperience?: number;
     }>;
-    education: Array<{
-      degree: string;
-      fieldOfStudy: string;
-      institution: string;
-      graduationYear: number;
-      gpa?: number;
-    }>;
-    experience: Array<{
-      jobTitle: string;
-      company: string;
-      durationMonths: number;
-      startDate?: string;
-      endDate?: string;
-      isCurrent?: boolean;
-      description?: string;
-    }>;
-  }) => api.post('/applications', data),
+    education?: string;
+    experience?: string;
+    resume: File;
+  }) => {
+    const formData = new FormData();
+    formData.append('jobId', data.jobId.toString());
+    formData.append('skills', JSON.stringify(data.skills));
+    if (data.education) formData.append('education', data.education);
+    if (data.experience) formData.append('experience', data.experience);
+    formData.append('resume', data.resume);
+    
+    return api.post('/api/applications/submit', formData);
+  },
   
-  getJobApplications: (jobId: number) => api.get(`/applications/job/${jobId}`),
+  getJobApplications: (jobId: number) => api.get(`/api/applications/job/${jobId}`),
   
-  getMyApplications: () => api.get('/applications/my'),
+  getMyApplications: () => api.get('/api/applications/my'),
   
-  getApplication: (id: number) => api.get(`/applications/${id}`),
-  
-  updateApplicationStatus: (id: number, status: string) =>
-    api.patch(`/applications/${id}/status`, { status }),
+  getApplication: (id: number) => api.get(`/api/applications/${id}`),
 };
 
 // Rankings API
 export const rankingsAPI = {
-  triggerRanking: (jobId: number) => api.post('/rankings/trigger', { jobId }),
+  triggerRanking: (jobId: number) => api.post('/api/rankings/trigger', { jobId }),
   
-  getRankingStatus: (jobId: number) => api.get(`/rankings/status/${jobId}`),
+  getRankingStatus: (jobId: number) => api.get(`/api/rankings/status/${jobId}`),
   
   getRankedCandidates: (jobId: number, limit?: number) =>
-    api.get(`/rankings/candidates/${jobId}`, { limit }),
+    api.get(`/api/rankings/candidates/${jobId}`, { limit }),
   
-  getRankings: (jobId: number) => api.get(`/rankings/job/${jobId}`),
+  getRankings: (jobId: number) => api.get(`/api/rankings/job/${jobId}`),
 };
 
 // AI Service API (direct to AI service)
 export const aiAPI = {
   testConnection: () => 
-    axios.get(`${process.env.NEXT_PUBLIC_AI_URL || 'http://localhost:5001'}/api/test-connection`),
+    axios.get(`${process.env.NEXT_PUBLIC_AI_SERVICE_URL || 'http://localhost:5001'}/api/test-connection`),
   
   rankCandidates: (jobId: number) =>
-    axios.post(`${process.env.NEXT_PUBLIC_AI_URL || 'http://localhost:5001'}/api/rank-candidates`, {
+    axios.post(`${process.env.NEXT_PUBLIC_AI_SERVICE_URL || 'http://localhost:5001'}/api/rank-candidates`, {
       jobId,
     }),
   
   getRankingStatus: (jobId: number) =>
-    axios.get(`${process.env.NEXT_PUBLIC_AI_URL || 'http://localhost:5001'}/api/ranking-status/${jobId}`),
+    axios.get(`${process.env.NEXT_PUBLIC_AI_SERVICE_URL || 'http://localhost:5001'}/api/ranking-status/${jobId}`),
 };
 
 export default api;

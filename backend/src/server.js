@@ -1,4 +1,5 @@
 const express = require('express');
+const http = require('http');
 const cors = require('cors');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
@@ -8,15 +9,41 @@ require('dotenv').config();
 // Import routes
 const authRoutes = require('./routes/authRoutes');
 const jobRoutes = require('./routes/jobRoutes');
+const applicationRoutes = require('./routes/applicationRoutes');
+const candidateRoutes = require('./routes/candidateRoutes');
+const emailRoutes = require('./routes/emailRoutes');
+const enhancedJobRoutes = require('./routes/enhancedJobRoutes');
 
 // Import middleware
 const { notFound, errorHandler } = require('./middleware/errorHandler');
+const securityHeaders = require('./middleware/securityHeaders');
+const performanceMonitor = require('./middleware/performanceMonitor');
+const { validateEnv } = require('./config/envValidator');
+const { checkDatabase } = require('./utils/databaseCheck');
+
+// Validate environment on startup
+validateEnv();
+
+// Check and setup database
+checkDatabase();
+
+// Import WebSocket handler
+const socketHandler = require('./websocket/socketHandler');
 
 // Create Express app
 const app = express();
 
+// Create HTTP server for WebSocket support
+const server = http.createServer(app);
+
+// Initialize WebSocket
+socketHandler.initialize(server);
+
 // Security middleware
-app.use(helmet());
+app.use(securityHeaders);
+
+// Performance monitoring (temporarily disabled for debugging)
+// app.use(performanceMonitor);
 
 // CORS configuration
 app.use(cors({
@@ -55,6 +82,10 @@ app.get('/health', (req, res) => {
 // API routes
 app.use('/api/auth', authRoutes);
 app.use('/api/jobs', jobRoutes);
+app.use('/api/applications', applicationRoutes);
+app.use('/api/candidates', candidateRoutes);
+app.use('/api/email', emailRoutes);
+app.use('/api/jobs', enhancedJobRoutes); // Enhanced job routes
 
 // 404 handler
 app.use(notFound);
@@ -64,9 +95,10 @@ app.use(errorHandler);
 
 // Start server
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
+server.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
   console.log(`📊 Health check: http://localhost:${PORT}/health`);
+  console.log(`🔌 WebSocket: ws://localhost:${PORT}/ws`);
   console.log(`🔑 Environment: ${process.env.NODE_ENV || 'development'}`);
 });
 

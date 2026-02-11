@@ -4,26 +4,21 @@ const authController = require('../controllers/authController');
 const { authenticateToken } = require('../middleware/auth');
 const validate = require('../middleware/validate');
 const { asyncHandler } = require('../middleware/errorHandler');
+const { validateRegistration } = require('../middleware/validation');
+const { authLimiter } = require('../middleware/rateLimiter');
 
 const router = express.Router();
 
 // Register user
 router.post('/register',
-  [
-    body('email').isEmail().withMessage('Please provide a valid email'),
-    body('password').isLength({ min: 8 }).withMessage('Password must be at least 8 characters long'),
-    body('firstName').notEmpty().withMessage('First name is required'),
-    body('lastName').notEmpty().withMessage('Last name is required'),
-    body('role').isIn(['recruiter', 'candidate']).withMessage('Role must be recruiter or candidate'),
-    body('companyName').if(body('role').equals('recruiter')).notEmpty().withMessage('Company name is required for recruiters'),
-    body('phone').optional().isMobilePhone().withMessage('Please provide a valid phone number')
-  ],
-  validate,
+  authLimiter,
+  validateRegistration,
   asyncHandler(authController.register)
 );
 
 // Login user
 router.post('/login',
+  authLimiter,
   [
     body('email').isEmail().withMessage('Please provide a valid email'),
     body('password').notEmpty().withMessage('Password is required')

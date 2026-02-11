@@ -7,6 +7,8 @@ import Layout from '@/components/Layout';
 import StatCard from '@/components/StatCard';
 import LoadingSpinner from '@/components/LoadingSpinner';
 import Table from '@/components/Table';
+import ActivityChart from '@/components/ActivityChart';
+import { useWebSocket } from '@/hooks/useWebSocket';
 import { jobsAPI } from '@/lib/api';
 import { 
   BriefcaseIcon, 
@@ -28,6 +30,16 @@ export default function RecruiterDashboard() {
     pendingRankings: 0,
   });
   const [recentJobs, setRecentJobs] = useState([]);
+
+  // Initialize WebSocket for real-time updates
+  const { isConnected, lastMessage } = useWebSocket({
+    onMessage: (message) => {
+      if (message.type === 'new_application') {
+        // Refresh stats when new application is received
+        fetchDashboardData();
+      }
+    }
+  });
 
   useEffect(() => {
     if (!user || user.role !== 'recruiter') {
@@ -245,15 +257,36 @@ export default function RecruiterDashboard() {
         </div>
 
         {/* Activity Overview */}
-        <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-100">
-          <h3 className="text-lg font-bold text-gray-900 mb-4">Activity Overview</h3>
-          <div className="h-64 flex items-center justify-center bg-gradient-to-br from-blue-50 to-purple-50 rounded-lg">
-            <div className="text-center">
-              <ChartIcon size={48} className="text-gray-400 mx-auto mb-2" />
-              <p className="text-gray-600">Analytics chart coming soon</p>
-              <p className="text-sm text-gray-500 mt-1">Track your recruitment metrics</p>
-            </div>
-          </div>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <ActivityChart
+            title="Applications Received"
+            data={[
+              { label: 'Mon', value: 12, previousValue: 8 },
+              { label: 'Tue', value: 19, previousValue: 15 },
+              { label: 'Wed', value: 15, previousValue: 18 },
+              { label: 'Thu', value: 25, previousValue: 20 },
+              { label: 'Fri', value: 22, previousValue: 17 },
+              { label: 'Sat', value: 8, previousValue: 6 },
+              { label: 'Sun', value: 5, previousValue: 4 },
+            ]}
+            type="bar"
+            color="#3B82F6"
+          />
+          
+          <ActivityChart
+            title="AI Rankings Completed"
+            data={[
+              { label: 'Mon', value: 8, previousValue: 6 },
+              { label: 'Tue', value: 15, previousValue: 12 },
+              { label: 'Wed', value: 12, previousValue: 14 },
+              { label: 'Thu', value: 20, previousValue: 16 },
+              { label: 'Fri', value: 18, previousValue: 15 },
+              { label: 'Sat', value: 6, previousValue: 5 },
+              { label: 'Sun', value: 4, previousValue: 3 },
+            ]}
+            type="line"
+            color="#10B981"
+          />
         </div>
       </div>
     </Layout>

@@ -81,7 +81,7 @@ export default function JobApplicationsPage() {
       label: 'Skills',
       render: (skills: any[]) => (
         <div className="flex flex-wrap gap-1">
-          {skills?.slice(0, 3).map((skill, idx) => (
+          {skills?.slice(0, 3).map((skill: any, idx: number) => (
             <span
               key={idx}
               className="px-2 py-1 bg-blue-50 text-blue-700 rounded text-xs font-medium"
