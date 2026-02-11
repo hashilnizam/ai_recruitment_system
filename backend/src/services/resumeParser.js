@@ -281,9 +281,9 @@ class EnhancedResumeParser {
             experienceItem.description = lines.slice(2).join(' ').trim();
             
             // Extract achievements (bullet points)
-            const achievements = experienceItem.description.match(/[•·-]\s*([^•·-\n]+)/g);
+            const achievements = experienceItem.description.match(/[•·\-]\s*([^•·\-\n]+)/g);
             if (achievements) {
-              experienceItem.achievements = achievements.map(a => a.replace(/^[•·-]\s*/, '').trim());
+              experienceItem.achievements = achievements.map(a => a.replace(/^[•·\-]\s*/, '').trim());
             }
           }
         }
