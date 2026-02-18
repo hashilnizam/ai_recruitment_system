@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import Layout from '@/components/Layout';
 import LoadingSpinner from '@/components/LoadingSpinner';
 import { applicationsAPI } from '@/lib/api';
+import { DataValidation } from '@/utils/dataValidation';
 import { 
   DocumentIcon, 
   ClockIcon, 
@@ -27,7 +28,12 @@ export default function ApplicationsPage() {
     try {
       setLoading(true);
       const response = await applicationsAPI.getMyApplications();
-      setApplications(response.data.data || []);
+      
+      if (DataValidation.validateApiResponse(response)) {
+        setApplications(response.data.data || []);
+      } else {
+        toast.error('Failed to fetch applications');
+      }
     } catch (error) {
       console.error('Error fetching applications:', error);
       toast.error('Failed to fetch applications');
@@ -49,7 +55,7 @@ export default function ApplicationsPage() {
       shortlisted: 'bg-green-100 text-green-700',
       rejected: 'bg-red-100 text-red-700'
     };
-    return colors[status as keyof typeof colors] || 'bg-gray-100 text-gray-700';
+    return DataValidation.safeGetString(colors[status as keyof typeof colors] || 'bg-gray-100 text-gray-700');
   };
 
   const getStatusIcon = (status: string) => {
@@ -155,10 +161,10 @@ export default function ApplicationsPage() {
                           <ClockIcon size={14} className="mr-1" />
                           Applied: {new Date(application.applied_at).toLocaleDateString()}
                         </span>
-                        {application.total_score && (
+                        {DataValidation.safeGetNumber(application.total_score, 0) && (
                           <span className="flex items-center">
                             <ChartIcon size={14} className="mr-1" />
-                            Score: {application.total_score.toFixed(1)}
+                            Score: {DataValidation.safeGetNumber(application.total_score, 0).toFixed(1)}
                           </span>
                         )}
                         {application.rank_position && (

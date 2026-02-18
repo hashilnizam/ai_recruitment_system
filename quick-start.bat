@@ -40,11 +40,11 @@ if not exist "ai-service\venv" (
 
 :: Check if database exists
 echo 🔍 Checking database...
-"C:\xampp\mysql\bin\mysql.exe" -u root -e "USE resume_screening;" 2>nul
+"C:\laragon\bin\mysql\mysql-8.4.3-winx64\bin\mysql.exe" -u root -proot -e "USE resume_screening;" 2>nul
 if %ERRORLEVEL% neq 0 (
     echo ❌ Database not found. Creating...
-    "C:\xampp\mysql\bin\mysql.exe" -u root -e "CREATE DATABASE resume_screening;"
-    Get-Content database\schema.sql | "C:\xampp\mysql\bin\mysql.exe" -u root resume_screening
+    "C:\laragon\bin\mysql\mysql-8.4.3-winx64\bin\mysql.exe" -u root -proot -e "CREATE DATABASE resume_screening;"
+    type database\schema.sql | "C:\laragon\bin\mysql\mysql-8.4.3-winx64\bin\mysql.exe" -u root -proot resume_screening
     echo ✅ Database created and migrated
 ) else (
     echo ✅ Database exists

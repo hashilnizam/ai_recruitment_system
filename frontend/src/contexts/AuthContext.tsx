@@ -12,6 +12,13 @@ interface User {
   companyName?: string;
 }
 
+interface TokenPayload {
+  id: number;
+  email: string;
+  role: 'recruiter' | 'candidate';
+  exp: number;
+}
+
 interface AuthContextType {
   user: User | null;
   login: (email: string, password: string) => Promise<void>;
@@ -31,6 +38,27 @@ interface RegisterData {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+// Token validation and expiration checking
+const validateToken = (token: string | null): boolean => {
+  if (!token) return false;
+  try {
+    const payload = JSON.parse(atob(token.split('.')[1]));
+    return payload.exp > Date.now() / 1000;
+  } catch {
+    return false;
+  }
+};
+
+const parseUserData = (userData: string | null): User | null => {
+  if (!userData) return null;
+  try {
+    return JSON.parse(userData);
+  } catch {
+    console.error('Error parsing user data:', userData);
+    return null;
+  }
+};
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
@@ -42,13 +70,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const userData = localStorage.getItem('user');
     
     if (token && userData) {
-      try {
-        const parsedUser = JSON.parse(userData);
-        setUser(parsedUser);
-      } catch (error) {
-        console.error('Error parsing user data:', error);
+      if (validateToken(token)) {
+        const parsedUser = parseUserData(userData);
+        if (parsedUser) {
+          setUser(parsedUser);
+        }
+      } else {
+        // Token expired, clear session
         localStorage.removeItem('token');
         localStorage.removeItem('user');
+        setUser(null);
       }
     }
     
@@ -57,7 +88,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = async (email: string, password: string) => {
     try {
-      const response = await fetch('http://localhost:5000/api/auth/login', {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'}/api/auth/login`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -97,7 +128,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const register = async (userData: RegisterData) => {
     try {
-      const response = await fetch('http://localhost:5000/api/auth/register', {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'}/api/auth/register`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

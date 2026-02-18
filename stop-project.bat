@@ -10,7 +10,7 @@ echo.
 echo 🛑 Stopping all services...
 
 :: Stop Node.js processes (Backend and Frontend)
-echo Stopping Node.js services...
+echo Stopping Node.js services (Backend on port 5000, Frontend on port 3000)...
 taskkill /F /IM node.exe >nul 2>&1
 if %ERRORLEVEL% equ 0 (
     echo ✅ Node.js services stopped
@@ -19,7 +19,7 @@ if %ERRORLEVEL% equ 0 (
 )
 
 :: Stop Python processes (AI Service)
-echo Stopping Python AI service...
+echo Stopping Python AI service (port 5001)...
 taskkill /F /IM python.exe >nul 2>&1
 if %ERRORLEVEL% equ 0 (
     echo ✅ Python AI service stopped
@@ -27,14 +27,8 @@ if %ERRORLEVEL% equ 0 (
     echo ℹ️  No Python services running
 )
 
-:: Optional: Stop MySQL (commented out by default)
-:: echo Stopping MySQL...
-:: taskkill /F /IM mysqld.exe >nul 2>&1
-:: if %ERRORLEVEL% equ 0 (
-::     echo ✅ MySQL stopped
-:: ) else (
-::     echo ℹ️  MySQL not stopped (keeping it running)
-:: )
+:: Note: MySQL (Laragon) is left running as it may be used by other applications
+echo ℹ️  MySQL (Laragon) left running - stop manually via Laragon if needed
 
 echo.
 echo ✅ All services stopped successfully!

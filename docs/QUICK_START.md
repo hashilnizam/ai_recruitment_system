@@ -13,13 +13,17 @@
 Make sure you have these installed:
 - **Node.js 18+** (check: `node --version`)
 - **Python 3.11+** (check: `python3 --version`) 
-- **MySQL 8.0+** (check: `mysql --version`)
+- **MySQL 8.0+** via Laragon (check: Laragon is running)
+
+### Database Setup with Laragon
+The system is configured to work with Laragon MySQL:
+- **Default credentials**: root / root
+- **Database name**: resume_screening
+- **Port**: 3306
+
+Ensure Laragon is running and MySQL is started before proceeding.
 
 ## Step 2: Automated Setup (Recommended)
-
-Run the automated setup script:
-
-```bash
 cd ai-recruitment-system
 chmod +x setup.sh
 ./setup.sh
@@ -61,9 +65,10 @@ npm install
 
 ### Database Setup
 ```bash
-# In the main project directory:
-mysql -u root -p < database/schema.sql
-# Enter your MySQL password when prompted
+# With Laragon (recommended):
+# Database should already be configured automatically
+# If manual setup needed:
+"C:\laragon\bin\mysql\mysql-8.4.3-winx64\bin\mysql.exe" -u root -proot < database/schema.sql
 ```
 
 ## Step 4: Configure Environment Variables
@@ -73,7 +78,7 @@ Already configured with your credentials:
 ```
 DATABASE_HOST=localhost
 DATABASE_USER=root
-DATABASE_PASSWORD=
+DATABASE_PASSWORD=root
 DATABASE_NAME=resume_screening
 JWT_SECRET=yD0HZCz7jxQ4zTR63LBPFuZqZHorzjBYukDV6g970iJvQoF46z
 ```
@@ -84,7 +89,7 @@ Update with your OpenAI API key:
 OPENAI_API_KEY=your_openai_api_key_here
 DATABASE_HOST=localhost
 DATABASE_USER=root
-DATABASE_PASSWORD=
+DATABASE_PASSWORD=root
 DATABASE_NAME=resume_screening
 FLASK_KEY=yD0HZCz7jxQ4zTR63LBPFuZqZHorzjBYukDV6g970iJvQoF46z
 ```
@@ -102,7 +107,7 @@ Open **3 separate terminal windows**:
 ### Terminal 1 - Backend
 ```bash
 cd backend
-npm run dev
+npm start
 ```
 Wait for: "🚀 Server running on port 5000"
 
@@ -152,12 +157,11 @@ kill -9 <PID>
 
 ### Database Connection Issues
 ```bash
-# Check MySQL is running
-sudo systemctl status mysql  # Linux
-brew services list  # macOS
+# Check Laragon MySQL is running
+# Ensure Laragon application is running and MySQL service is started
 
-# Test connection
-mysql -u root -p -e "SHOW DATABASES;"
+# Test connection with Laragon
+"C:\laragon\bin\mysql\mysql-8.4.3-winx64\bin\mysql.exe" -u root -proot -e "SHOW DATABASES;"
 ```
 
 ### Python Virtual Environment Issues

@@ -7,24 +7,24 @@ echo   AI Recruitment System Launcher
 echo ========================================
 echo.
 
-:: Check if XAMPP MySQL is running
+:: Check if Laragon MySQL is running
 echo [1/4] Checking MySQL service...
-tasklist /FI "IMAGENAME eq mysqld.exe" 2>NUL | find /I "mysqld.exe" >NUL
+"C:\laragon\bin\mysql\mysql-8.4.3-winx64\bin\mysql.exe" -u root -proot -e "SELECT 1;" 2>nul
 if %ERRORLEVEL% neq 0 (
     echo ❌ MySQL is not running!
-    echo Starting MySQL...
-    start "" "C:\xampp\mysql\bin\mysqld.exe" --defaults-file=C:\xampp\mysql\bin\my.ini
-    timeout /t 3 >nul
-    echo ✅ MySQL started
+    echo Please start Laragon and ensure MySQL is running.
+    echo Then run this script again.
+    pause
+    exit /b 1
 ) else (
-    echo ✅ MySQL is already running
+    echo ✅ MySQL is running
 )
 
 :: Start Backend API
 echo.
 echo [2/4] Starting Backend API...
 cd /d "%~dp0backend"
-start "Backend API" cmd /k "title Backend API && npm run dev"
+start "Backend API" cmd /k "title Backend API && npm start"
 echo ✅ Backend API starting on port 5000...
 
 :: Wait a moment for backend to start
@@ -34,7 +34,7 @@ timeout /t 3 >nul
 echo.
 echo [3/4] Starting AI Service...
 cd /d "%~dp0ai-service"
-start "AI Service" cmd /k "title AI Service && venv\Scripts\activate && python app.py"
+start "AI Service" cmd /k "title AI Service && powershell -Command \"venv\Scripts\activate.ps1; python app.py\""
 echo ✅ AI Service starting on port 5001...
 
 :: Wait a moment for AI service to start

@@ -7,6 +7,7 @@ import Layout from '@/components/Layout';
 import JobRecommendations from '@/components/JobRecommendations';
 import LoadingSpinner from '@/components/LoadingSpinner';
 import { applicationsAPI, jobsAPI } from '@/lib/api';
+import { DataValidation } from '@/utils/dataValidation';
 import { BriefcaseIcon, DocumentIcon, TrendingUpIcon, UserIcon, CalendarIcon, CheckCircleIcon, SearchIcon } from '@/components/Icons';
 import toast from 'react-hot-toast';
 
@@ -45,33 +46,28 @@ export default function CandidateDashboard() {
       
       // Fetch available jobs
       const jobsResponse = await jobsAPI.getJobs({ status: 'published' });
-      const jobsData = jobsResponse.data;
-      
-      if (jobsData.success) {
-        setJobs(jobsData.data || []);
+      if (DataValidation.validateApiResponse(jobsResponse)) {
+        setJobs(jobsResponse.data || []);
       }
 
       // Fetch my applications
       const applicationsResponse = await applicationsAPI.getMyApplications();
-      const applicationsData = applicationsResponse.data;
-      
-      if (applicationsData.success) {
-        setApplications(applicationsData.data || []);
+      if (DataValidation.validateApiResponse(applicationsResponse)) {
+        setApplications(applicationsResponse.data || []);
+        
+        // Calculate stats
+        const apps = applicationsResponse.data || [];
+        const avgScore = DataValidation.calculateAverageScore(apps);
+        
+        setStats({
+          totalApplications: apps.length,
+          pendingApplications: DataValidation.filterByStatus(apps, 'pending').length,
+          rankedApplications: DataValidation.filterByStatus(apps, 'ranked').length,
+          interviewApplications: DataValidation.filterByStatus(apps, 'interview').length,
+          availableJobs: jobsResponse.data?.length || 0,
+          averageScore: Math.round(avgScore)
+        });
       }
-
-      // Calculate stats
-      const apps = applicationsData.data || [];
-      const avgScore = apps.length > 0 ? 
-        apps.reduce((sum: number, app: any) => sum + (app.total_score || 0), 0) / apps.length : 0;
-      
-      setStats({
-        totalApplications: apps.length,
-        pendingApplications: apps.filter((app: any) => app.status === 'pending').length,
-        rankedApplications: apps.filter((app: any) => app.status === 'ranked').length,
-        interviewApplications: apps.filter((app: any) => app.status === 'interview').length,
-        availableJobs: jobsData.data?.length || 0,
-        averageScore: Math.round(avgScore)
-      });
     } catch (error) {
       console.error('Error fetching dashboard data:', error);
       toast.error('Failed to load dashboard data');

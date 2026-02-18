@@ -2,10 +2,16 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { useAuth } from '@/contexts/AuthContext';
+import { useRequireRole } from '@/hooks/useRequireRole';
+import { jobsAPI } from '@/lib/api';
+import { DataValidation } from '@/utils/dataValidation';
+import toast from 'react-hot-toast';
 
 export default function CreateJob() {
-  const [user, setUser] = useState<any>(null);
+  const [user] = useAuth();
   const [loading, setLoading] = useState(false);
+  const [errors, setErrors] = useState<any>({});
   const [formData, setFormData] = useState({
     title: '',
     description: '',
@@ -19,23 +25,22 @@ export default function CreateJob() {
   });
   const router = useRouter();
 
-  useEffect(() => {
-    const userData = localStorage.getItem('user');
-    const token = localStorage.getItem('token');
+  // Use role-based access control
+  useRequireRole('recruiter');
 
-    if (!userData || !token) {
-      router.push('/auth/login');
-      return;
+  const validateForm = () => {
+    const validation = DataValidation.validateRequiredFields(formData, [
+      'title', 'description', 'requirements'
+    ]);
+    
+    if (!validation.isValid) {
+      setErrors(validation.errors);
+      return false;
     }
-
-    const parsedUser = JSON.parse(userData);
-    if (parsedUser.role !== 'recruiter') {
-      router.push('/dashboard/candidate');
-      return;
-    }
-
-    setUser(parsedUser);
-  }, [router]);
+    
+    setErrors({});
+    return true;
+  };
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
@@ -43,36 +48,42 @@ export default function CreateJob() {
       ...prev,
       [name]: value
     }));
+    
+    // Clear error when user starts typing
+    if (errors[name]) {
+      setErrors(prev => ({
+        ...prev,
+        [name]: undefined
+      }));
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    if (!validateForm()) {
+      return;
+    }
+    
     setLoading(true);
 
     try {
-      const token = localStorage.getItem('token');
-      const response = await fetch('http://localhost:5000/api/jobs', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          ...formData,
-          skills: formData.skills.split(',').map(skill => skill.trim()).filter(Boolean)
-        })
-      });
+      const jobData = {
+        ...formData,
+        skills: formData.skills.split(',').map(skill => skill.trim()).filter(Boolean)
+      };
 
-      const data = await response.json();
+      const response = await jobsAPI.createJob(jobData);
 
-      if (data.success) {
+      if (DataValidation.validateApiResponse(response)) {
+        toast.success('Job created successfully!');
         router.push('/dashboard/recruiter');
       } else {
-        alert(data.message || 'Failed to create job');
+        toast.error(response.message || 'Failed to create job');
       }
     } catch (error) {
       console.error('Error creating job:', error);
-      alert('Failed to create job');
+      toast.error('Failed to create job. Please try again.');
     } finally {
       setLoading(false);
     }

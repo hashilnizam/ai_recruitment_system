@@ -1,6 +1,6 @@
 'use client';
 
-import { ReactNode } from 'react';
+import { ReactNode, useMemo } from 'react';
 import Link from 'next/link';
 import { useRouter, usePathname } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
@@ -27,7 +27,7 @@ export default function Layout({ children }: LayoutProps) {
 
   const handleLogout = () => {
     logout();
-    router.push('/');
+    router.push('/auth/login');
   };
 
   const recruiterMenuItems = [
@@ -45,7 +45,10 @@ export default function Layout({ children }: LayoutProps) {
     { name: 'Profile', icon: UserIcon, href: '/profile' },
   ];
 
-  const menuItems = user?.role === 'recruiter' ? recruiterMenuItems : candidateMenuItems;
+  const menuItems = useMemo(() => {
+    if (!user) return [];
+    return user.role === 'recruiter' ? recruiterMenuItems : candidateMenuItems;
+  }, [user]);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 via-blue-50 to-purple-50">
@@ -74,16 +77,16 @@ export default function Layout({ children }: LayoutProps) {
             const Icon = item.icon;
             return (
               <Link
-                key={item.href}
+                key={item.name}
                 href={item.href}
-                className={`flex items-center space-x-3 px-4 py-3 rounded-lg transition-all duration-200 ${
-                  isActive
-                    ? 'bg-gradient-to-r from-blue-500 to-blue-600 text-white shadow-md'
+                className={`flex items-center space-x-3 px-4 py-3 rounded-lg transition-colors ${
+                  pathname === item.href
+                    ? 'bg-primary-100 text-primary-700 border-primary-200'
                     : 'text-gray-700 hover:bg-gray-100'
                 }`}
               >
                 <Icon size={20} />
-                <span className="font-medium">{item.name}</span>
+                <span>{item.name}</span>
               </Link>
             );
           })}

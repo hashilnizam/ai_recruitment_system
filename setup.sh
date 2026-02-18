@@ -88,8 +88,8 @@ if [ ! -f .env ]; then
 DB_HOST=localhost
 DB_PORT=3306
 DB_USER=root
-DB_PASSWORD=your_mysql_password
-DB_NAME=ai_recruitment
+DB_PASSWORD=root
+DB_NAME=resume_screening
 
 # JWT Configuration
 JWT_SECRET=your_super_secret_jwt_key_here
@@ -160,14 +160,14 @@ OPENAI_API_KEY=your_openai_api_key_here
 # Flask Configuration
 FLASK_ENV=development
 FLASK_DEBUG=True
-PORT=8000
+PORT=5001
 
 # Database Configuration
 DB_HOST=localhost
 DB_PORT=3306
 DB_USER=root
-DB_PASSWORD=your_mysql_password
-DB_NAME=ai_recruitment
+DB_PASSWORD=root
+DB_NAME=resume_screening
 
 # Backend Service Configuration
 BACKEND_URL=http://localhost:5000
@@ -204,7 +204,7 @@ if [ ! -f .env.local ]; then
         cat > .env.local << EOF
 # Next.js Configuration
 NEXT_PUBLIC_API_URL=http://localhost:5000
-NEXT_PUBLIC_AI_SERVICE_URL=http://localhost:8000
+NEXT_PUBLIC_AI_SERVICE_URL=http://localhost:5001
 
 # Application Configuration
 NEXT_PUBLIC_APP_NAME=AI Recruitment System
@@ -228,25 +228,8 @@ if [ ! -f database/schema.sql ]; then
     exit 1
 fi
 
-echo "Please enter your MySQL root password (or press Enter if no password):"
-read -s mysql_password
-echo ""
-
-if [ -z "$mysql_password" ]; then
-    if mysql -u root < database/schema.sql; then
-        echo "✅ Database schema created successfully!"
-    else
-        echo "❌ Failed to create database schema. Please check your MySQL credentials."
-        exit 1
-    fi
-else
-    if mysql -u root -p"$mysql_password" < database/schema.sql; then
-        echo "✅ Database schema created successfully!"
-    else
-        echo "❌ Failed to create database schema. Please check your MySQL credentials."
-        exit 1
-    fi
-fi
+echo "ℹ️  Note: This script assumes MySQL is accessible. If using Laragon, ensure it's running."
+echo "ℹ️  For Windows users with Laragon, the database should already be configured."
 
 echo ""
 echo "🎉 Setup completed successfully!"
@@ -258,11 +241,11 @@ echo "   - ai-service/.env (OpenAI API key)"
 echo ""
 echo "2. Start the services:"
 if [ "$OS" = "Windows" ]; then
-    echo "   Terminal 1: cd backend && npm run dev"
-    echo "   Terminal 2: cd ai-service && venv\\Scripts\\activate && python app.py"
+    echo "   Terminal 1: cd backend && npm start"
+    echo "   Terminal 2: cd ai-service && venv\Scripts\activate && python app.py"
     echo "   Terminal 3: cd frontend && npm run dev"
 else
-    echo "   Terminal 1: cd backend && npm run dev"
+    echo "   Terminal 1: cd backend && npm start"
     echo "   Terminal 2: cd ai-service && source venv/bin/activate && python app.py"
     echo "   Terminal 3: cd frontend && npm run dev"
 fi

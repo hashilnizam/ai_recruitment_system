@@ -10,6 +10,7 @@ import Table from '@/components/Table';
 import ActivityChart from '@/components/ActivityChart';
 import { useWebSocket } from '@/hooks/useWebSocket';
 import { jobsAPI } from '@/lib/api';
+import { DataValidation } from '@/utils/dataValidation';
 import { 
   BriefcaseIcon, 
   SparklesIcon, 
@@ -53,28 +54,16 @@ export default function RecruiterDashboard() {
     try {
       setLoading(true);
       
-      // Fetch dashboard stats
-      const statsResponse = await fetch('http://localhost:5000/api/jobs/stats/dashboard', {
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        }
-      });
-      const statsData = await statsResponse.json();
-      
-      if (statsData.success) {
-        setStats(statsData.data);
+      // Fetch dashboard stats using API client
+      const statsResponse = await jobsAPI.getDashboardStats();
+      if (DataValidation.validateApiResponse(statsResponse)) {
+        setStats(statsResponse.data);
       }
       
-      // Fetch jobs
-      const jobsResponse = await fetch('http://localhost:5000/api/jobs', {
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        }
-      });
-      const jobsData = await jobsResponse.json();
-      
-      if (jobsData.success) {
-        setRecentJobs(jobsData.data.slice(0, 5));
+      // Fetch jobs using API client
+      const jobsResponse = await jobsAPI.getJobs({ limit: 5 });
+      if (DataValidation.validateApiResponse(jobsResponse)) {
+        setRecentJobs(jobsResponse.data.slice(0, 5));
       }
       
     } catch (error) {

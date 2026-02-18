@@ -8,6 +8,8 @@ import LoadingSpinner from '@/components/LoadingSpinner';
 import StatCard from '@/components/StatCard';
 import { applicationsAPI, jobsAPI, rankingsAPI } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
+import { DataValidation } from '@/utils/dataValidation';
+import toast from 'react-hot-toast';
 
 export default function JobApplicationsPage() {
   const { user } = useAuth();
@@ -32,22 +34,29 @@ export default function JobApplicationsPage() {
       
       // Fetch job details
       const jobResponse = await jobsAPI.getJob(Number(id));
-      setJob(jobResponse.data.data);
+      if (DataValidation.validateApiResponse(jobResponse)) {
+        setJob(jobResponse.data.data);
+      }
 
       // Fetch applications
       const appsResponse = await applicationsAPI.getJobApplications(Number(id));
-      setApplications(appsResponse.data.data || []);
+      if (DataValidation.validateApiResponse(appsResponse)) {
+        setApplications(appsResponse.data.data || []);
+      }
 
       // Fetch ranking status
       try {
         const statusResponse = await rankingsAPI.getRankingStatus(Number(id));
-        setRankingStatus(statusResponse.data.data);
+        if (DataValidation.validateApiResponse(statusResponse)) {
+          setRankingStatus(statusResponse.data.data);
+        }
       } catch (error) {
         // No ranking exists yet
         setRankingStatus(null);
       }
     } catch (error) {
       console.error('Error fetching data:', error);
+      toast.error('Failed to fetch job data');
     } finally {
       setLoading(false);
     }
@@ -56,10 +65,12 @@ export default function JobApplicationsPage() {
   const triggerRanking = async () => {
     try {
       await rankingsAPI.triggerRanking(Number(id));
+      toast.success('Ranking process started!');
       // Refresh status after triggering
       setTimeout(fetchData, 2000);
     } catch (error) {
       console.error('Error triggering ranking:', error);
+      toast.error('Failed to start ranking process');
     }
   };
 

@@ -1,5 +1,6 @@
 import axios, { AxiosInstance, AxiosResponse } from 'axios';
 import { ApiResponse } from '@/types';
+import { ApiErrorHandler } from '@/utils/apiErrorHandler';
 
 class ApiClient {
   private client: AxiosInstance;
@@ -13,8 +14,8 @@ class ApiClient {
       },
     });
 
-    console.log('🔗 API Client baseURL:', this.client.defaults.baseURL);
-    console.log('🔗 Environment variable NEXT_PUBLIC_API_URL:', process.env.NEXT_PUBLIC_API_URL);
+    console.log(' API Client baseURL:', this.client.defaults.baseURL);
+    console.log(' Environment variable NEXT_PUBLIC_API_URL:', process.env.NEXT_PUBLIC_API_URL);
 
     // Request interceptor to add auth token
     this.client.interceptors.request.use(
@@ -29,8 +30,8 @@ class ApiClient {
           delete config.headers['Content-Type'];
         }
         
-        console.log('🌐 API Request:', config.method?.toUpperCase(), (config.baseURL || '') + (config.url || ''));
-        console.log('📋 Request data type:', config.data instanceof FormData ? 'FormData' : typeof config.data);
+        console.log(' API Request:', config.method?.toUpperCase(), (config.baseURL || '') + (config.url || ''));
+        console.log(' Request data type:', config.data instanceof FormData ? 'FormData' : typeof config.data);
         
         return config;
       },
@@ -42,15 +43,17 @@ class ApiClient {
     // Response interceptor for error handling
     this.client.interceptors.response.use(
       (response: AxiosResponse) => {
+        // Check for API errors
+        if (response.status >= 400) {
+          const apiError = ApiErrorHandler.handle(response, 'API request failed');
+          return Promise.reject(new Error(apiError.message));
+        }
+        
         return response;
       },
       (error) => {
-        if (error.response?.status === 401) {
-          // Token expired or invalid
-          localStorage.removeItem('token');
-          localStorage.removeItem('user');
-          window.location.href = '/auth/login';
-        }
+        // Handle different error types
+        ApiErrorHandler.handle(error, 'Network error occurred');
         return Promise.reject(error);
       }
     );
