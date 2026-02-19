@@ -9,7 +9,7 @@ import { DataValidation } from '@/utils/dataValidation';
 import toast from 'react-hot-toast';
 
 export default function CreateJob() {
-  const [user] = useAuth();
+  const { user } = useAuth();
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState<any>({});
   const [formData, setFormData] = useState({
