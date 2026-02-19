@@ -137,6 +137,70 @@ router.post('/', authenticateToken, requireRecruiter, async (req, res) => {
   }
 });
 
+// Get personalized job recommendations for candidate
+router.get('/recommendations', authenticateToken, async (req, res) => {
+  try {
+    const candidateId = req.user.id;
+    
+    console.log('🎯 Generating job recommendations for candidate:', candidateId);
+    
+    // Get candidate basic profile
+    const candidate = await db.query(
+      'SELECT * FROM users WHERE id = ?',
+      [candidateId]
+    );
+    
+    if (candidate.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Candidate profile not found'
+      });
+    }
+    
+    const candidateProfile = candidate[0];
+    
+    // Get all available jobs
+    const jobs = await db.query(
+      `SELECT j.*, u.first_name as recruiter_first_name, u.last_name as recruiter_last_name, 
+              u.company_name, u.email as recruiter_email,
+              (SELECT COUNT(*) FROM applications WHERE job_id = j.id) as application_count
+       FROM jobs j
+       JOIN users u ON j.recruiter_id = u.id
+       WHERE j.status = 'published'
+       ORDER BY j.created_at DESC`
+    );
+    
+    // Check which jobs candidate has already applied to
+    const applications = await db.query(
+      'SELECT job_id FROM applications WHERE candidate_id = ?',
+      [candidateId]
+    );
+    
+    const appliedJobIds = applications.map(app => app.job_id);
+    
+    // Mark jobs with application status
+    const availableJobs = jobs.map(job => ({
+      ...job,
+      applicationStatus: appliedJobIds.includes(job.id) ? 'applied' : null
+    }));
+    
+    res.json({
+      success: true,
+      data: {
+        relevantMatches: availableJobs.length,
+        jobs: availableJobs
+      }
+    });
+    
+  } catch (error) {
+    console.error('❌ Error generating recommendations:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to generate recommendations'
+    });
+  }
+});
+
 // Get job by ID
 router.get('/:id', authenticateToken, async (req, res) => {
   try {

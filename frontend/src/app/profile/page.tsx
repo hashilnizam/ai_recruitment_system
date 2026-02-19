@@ -28,7 +28,8 @@ export default function ProfilePage() {
     lastName: '',
     companyName: '',
     phone: '',
-    email: ''
+    email: '',
+    createdAt: ''
   });
 
   useEffect(() => {
@@ -47,11 +48,12 @@ export default function ProfilePage() {
       if (response.data.success) {
         const userData = response.data.data;
         setProfileData({
-          firstName: userData.first_name || '',
-          lastName: userData.last_name || '',
-          companyName: userData.company_name || '',
+          firstName: userData.firstName || '',
+          lastName: userData.lastName || '',
+          companyName: userData.companyName || '',
           phone: userData.phone || '',
-          email: userData.email || ''
+          email: userData.email || '',
+          createdAt: userData.createdAt || ''
         });
       }
     } catch (error) {
@@ -60,6 +62,16 @@ export default function ProfilePage() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const calculateProfileCompletion = () => {
+    const fields = ['firstName', 'lastName', 'phone'];
+    if (user?.role === 'recruiter') {
+      fields.push('companyName');
+    }
+    
+    const completedFields = fields.filter(field => profileData[field as keyof typeof profileData]).length;
+    return Math.round((completedFields / fields.length) * 100);
   };
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -87,9 +99,9 @@ export default function ProfilePage() {
         // Update user context
         const updatedUser = {
           ...user,
-          first_name: profileData.firstName,
-          last_name: profileData.lastName,
-          company_name: profileData.companyName,
+          firstName: profileData.firstName,
+          lastName: profileData.lastName,
+          companyName: profileData.companyName,
           phone: profileData.phone
         };
         localStorage.setItem('user', JSON.stringify(updatedUser));
@@ -145,14 +157,35 @@ export default function ProfilePage() {
                   {profileData.firstName.charAt(0)}{profileData.lastName.charAt(0)}
                 </span>
               </div>
-              <div>
+              <div className="flex-1">
                 <h2 className="text-2xl font-bold text-gray-900">
                   {profileData.firstName} {profileData.lastName}
                 </h2>
                 <p className="text-gray-600 capitalize">{user?.role}</p>
                 <p className="text-sm text-gray-500">
-                  Member since: N/A
+                  Member since: {profileData.createdAt ? new Date(profileData.createdAt).toLocaleDateString('en-US', { 
+                    year: 'numeric', 
+                    month: 'long', 
+                    day: 'numeric' 
+                  }) : 'Loading...'}
                 </p>
+                
+                {/* Profile Completion */}
+                <div className="mt-3">
+                  <div className="flex items-center justify-between text-sm mb-1">
+                    <span className="text-gray-600">Profile Completion</span>
+                    <span className="font-medium text-gray-900">{calculateProfileCompletion()}%</span>
+                  </div>
+                  <div className="w-full bg-gray-200 rounded-full h-2">
+                    <div 
+                      className={`h-2 rounded-full transition-all duration-300 ${
+                        calculateProfileCompletion() >= 80 ? 'bg-green-500' :
+                        calculateProfileCompletion() >= 50 ? 'bg-yellow-500' : 'bg-red-500'
+                      }`}
+                      style={{ width: `${calculateProfileCompletion()}%` }}
+                    />
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -299,6 +332,27 @@ export default function ProfilePage() {
             )}
           </div>
         </div>
+
+        {/* Stats Section (Candidates only) */}
+        {user?.role === 'candidate' && (
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+            <h3 className="text-lg font-bold text-gray-900 mb-4">Your Activity</h3>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="bg-blue-50 rounded-lg p-4 text-center">
+                <div className="text-2xl font-bold text-blue-600">0</div>
+                <div className="text-sm text-gray-600">Applications Submitted</div>
+              </div>
+              <div className="bg-green-50 rounded-lg p-4 text-center">
+                <div className="text-2xl font-bold text-green-600">0</div>
+                <div className="text-sm text-gray-600">Profile Views</div>
+              </div>
+              <div className="bg-purple-50 rounded-lg p-4 text-center">
+                <div className="text-2xl font-bold text-purple-600">0</div>
+                <div className="text-sm text-gray-600">Interviews Scheduled</div>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Account Actions */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
