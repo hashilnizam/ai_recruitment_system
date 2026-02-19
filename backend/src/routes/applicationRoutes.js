@@ -64,11 +64,21 @@ const upload = multer({
 async function extractTextFromPDF(filePath) {
   try {
     const dataBuffer = fs.readFileSync(filePath);
-    const data = await pdfParse(dataBuffer);
-    return data.text;
+    
+    // Use Promise-based approach for pdf-parse
+    return new Promise((resolve, reject) => {
+      pdfParse(dataBuffer, (err, data) => {
+        if (err) {
+          console.error('PDF parsing error:', err);
+          reject(new Error('Failed to extract text from PDF'));
+        } else {
+          resolve(data.text);
+        }
+      });
+    });
   } catch (error) {
-    console.error('Error extracting text from PDF:', error);
-    throw new Error('Failed to extract text from PDF');
+    console.error('Error reading PDF file:', error);
+    throw new Error('Failed to read PDF file');
   }
 }
 

@@ -16,7 +16,16 @@ class EnhancedResumeParser {
       // Extract text from PDF
       let text;
       if (filename.endsWith('.pdf')) {
-        const pdfData = await pdfParse(resumeBuffer);
+        // Use Promise-based approach for pdf-parse
+        const pdfData = await new Promise((resolve, reject) => {
+          pdfParse(resumeBuffer, (err, data) => {
+            if (err) {
+              reject(err);
+            } else {
+              resolve(data);
+            }
+          });
+        });
         text = pdfData.text;
       } else {
         // Handle other file types (DOC, DOCX) - for now, convert to text
