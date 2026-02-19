@@ -5,6 +5,7 @@ const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
 const pdfParse = require('pdf-parse');
+const axios = require('axios');
 const db = require('../config/database');
 const { authenticateToken, authorizeRole } = require('../middleware/auth');
 const requireCandidate = authorizeRole('candidate');
@@ -191,6 +192,30 @@ router.post('/submit', authenticateToken, requireCandidate, upload.single('resum
     const resumeData = await resumeParser.parseResume(req.file.buffer, req.file.originalname);
     console.log('✅ Resume parsing completed');
 
+    // Use AI to enhance the extracted data
+    console.log('🤖 Enhancing data with AI...');
+    let aiEnhancedData = null;
+    try {
+      const aiResponse = await axios.post('http://localhost:5001/api/enhance-application-data', {
+        resume_data: resumeData,
+        job_requirements: {
+          required_skills: JSON.parse(job.required_skills || '[]'),
+          required_education: JSON.parse(job.required_education || '[]'),
+          required_experience: JSON.parse(job.required_experience || '{}')
+        }
+      }, {
+        timeout: 30000 // 30 second timeout
+      });
+      
+      if (aiResponse.data.success) {
+        aiEnhancedData = aiResponse.data.data;
+        console.log('✅ AI enhancement completed');
+        console.log(`📊 Match score: ${aiEnhancedData.match_score}%`);
+      }
+    } catch (aiError) {
+      console.warn('⚠️ AI enhancement failed, using parsed data:', aiError.message);
+    }
+
     // Check if job exists and is published
     const jobs = await db.query(
       'SELECT * FROM jobs WHERE id = ? AND status = ?',
@@ -373,14 +398,18 @@ router.post('/submit', authenticateToken, requireCandidate, upload.single('resum
       data: {
         applicationId,
         jobId,
-        status: 'pending',
         score: scoreResult.totalScore,
+        resumeData: resumeData,
+        aiEnhancedData: aiEnhancedData,
         feedback: feedback,
-        resumeData: {
-          skills: resumeData.skills,
-          experience: resumeData.experience.length,
-          education: resumeData.education.length
-        }
+        needsManualFix: aiEnhancedData && (
+          aiEnhancedData.missing_critical_fields?.length > 0 ||
+          aiEnhancedData.skill_gaps?.length > 0
+        ),
+        missingFields: aiEnhancedData?.missing_critical_fields || [],
+        skillGaps: aiEnhancedData?.skill_gaps || [],
+        recommendations: aiEnhancedData?.recommendations || [],
+        aiMatchScore: aiEnhancedData?.match_score || null
       }
     });
 

@@ -1,5 +1,5 @@
 const { SkillDatabase } = require('../data/skillDatabase');
-const pdfParse = require('pdf-parse');
+const pdfParse = require('pdf-parse').default || require('pdf-parse');
 
 class EnhancedResumeParser {
   constructor() {
@@ -16,17 +16,23 @@ class EnhancedResumeParser {
       // Extract text from PDF
       let text;
       if (filename.endsWith('.pdf')) {
-        // Use Promise-based approach for pdf-parse
-        const pdfData = await new Promise((resolve, reject) => {
-          pdfParse(resumeBuffer, (err, data) => {
-            if (err) {
-              reject(err);
-            } else {
-              resolve(data);
-            }
+        try {
+          // Try promise-based approach first (pdf-parse v2.x)
+          const pdfData = await pdfParse(resumeBuffer);
+          text = pdfData.text;
+        } catch (promiseError) {
+          // Fallback to callback-based approach (pdf-parse v1.x)
+          const pdfData = await new Promise((resolve, reject) => {
+            pdfParse(resumeBuffer, (err, data) => {
+              if (err) {
+                reject(err);
+              } else {
+                resolve(data);
+              }
+            });
           });
-        });
-        text = pdfData.text;
+          text = pdfData.text;
+        }
       } else {
         // Handle other file types (DOC, DOCX) - for now, convert to text
         text = resumeBuffer.toString('utf8');

@@ -52,6 +52,61 @@ def test_connection():
             'message': f'OpenAI API connection failed: {str(e)}'
         }), 500
 
+@app.route('/api/parse-resume', methods=['POST'])
+def parse_resume():
+    """Parse resume using AI to extract structured data"""
+    try:
+        data = request.get_json()
+        resume_text = data.get('resume_text')
+        
+        if not resume_text:
+            return jsonify({
+                'success': False,
+                'message': 'Resume text is required'
+            }), 400
+        
+        # Use AI to extract structured data from resume
+        extracted_data = ai_service.extract_resume_data(resume_text)
+        
+        return jsonify({
+            'success': True,
+            'data': extracted_data
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'message': f'Failed to parse resume: {str(e)}'
+        }), 500
+
+@app.route('/api/enhance-application-data', methods=['POST'])
+def enhance_application_data():
+    """Enhance application data using AI"""
+    try:
+        data = request.get_json()
+        resume_data = data.get('resume_data')
+        job_requirements = data.get('job_requirements')
+        
+        if not resume_data:
+            return jsonify({
+                'success': False,
+                'message': 'Resume data is required'
+            }), 400
+        
+        # Use AI to enhance and validate application data
+        enhanced_data = ai_service.enhance_application_data(resume_data, job_requirements)
+        
+        return jsonify({
+            'success': True,
+            'data': enhanced_data
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'message': f'Failed to enhance application data: {str(e)}'
+        }), 500
+
 @app.route('/api/rank-candidates', methods=['POST'])
 def rank_candidates():
     """Rank candidates for a specific job using AI"""

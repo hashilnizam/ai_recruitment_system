@@ -13,6 +13,7 @@ openai.api_key = os.getenv('OPENAI_API_KEY')
 class AIService:
     def __init__(self):
         self.model = "gpt-4o-mini"
+        self.client = openai.OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
     
     def generate_embedding(self, text):
         """Generate embedding for given text using OpenAI"""
@@ -190,4 +191,167 @@ class AIService:
                 "missing_skills": "Review the job requirements for skill gaps",
                 "suggestions": "Continue learning and gaining experience",
                 "overall_assessment": "Thank you for your interest in this position"
+            }
+    
+    def extract_resume_data(self, resume_text):
+        """Extract structured data from resume text using AI"""
+        try:
+            prompt = f"""
+            Extract structured information from the following resume text. 
+            Return the data in JSON format with the following structure:
+            
+            {{
+                "personal_info": {{
+                    "name": "Full name",
+                    "email": "Email address",
+                    "phone": "Phone number",
+                    "location": "City, State",
+                    "linkedin": "LinkedIn profile URL",
+                    "github": "GitHub profile URL"
+                }},
+                "skills": [
+                    {{
+                        "name": "Skill name",
+                        "category": "technical/soft/tool",
+                        "level": "beginner/intermediate/advanced",
+                        "experience_years": 2
+                    }}
+                ],
+                "education": [
+                    {{
+                        "degree": "Degree name",
+                        "field": "Field of study",
+                        "institution": "University name",
+                        "start_date": "YYYY",
+                        "end_date": "YYYY or Present",
+                        "gpa": "3.8"
+                    }}
+                ],
+                "experience": [
+                    {{
+                        "title": "Job title",
+                        "company": "Company name",
+                        "location": "City, State",
+                        "start_date": "YYYY-MM",
+                        "end_date": "YYYY-MM or Present",
+                        "description": "Job description",
+                        "achievements": ["Achievement 1", "Achievement 2"]
+                    }}
+                ],
+                "projects": [
+                    {{
+                        "name": "Project name",
+                        "description": "Project description",
+                        "technologies": ["Tech1", "Tech2"],
+                        "duration": "3 months",
+                        "role": "Your role"
+                    }}
+                ],
+                "certifications": [
+                    {{
+                        "name": "Certification name",
+                        "issuer": "Issuing organization",
+                        "date": "YYYY-MM",
+                        "expiry_date": "YYYY-MM"
+                    }}
+                ]
+            }}
+            
+            Resume text:
+            {resume_text}
+            
+            Extract as much information as possible. If a field is empty or not found, use null or empty string.
+            For dates, if not specific, use reasonable estimates. For skills, categorize appropriately.
+            """
+            
+            response = self.client.chat.completions.create(
+                model=self.model,
+                messages=[
+                    {"role": "system", "content": "You are an expert resume parser. Extract structured data accurately and comprehensively."},
+                    {"role": "user", "content": prompt}
+                ],
+                temperature=0.1
+            )
+            
+            extracted_text = response.choices[0].message.content
+            return json.loads(extracted_text)
+            
+        except Exception as e:
+            print(f"Error extracting resume data: {e}")
+            return {
+                "personal_info": {},
+                "skills": [],
+                "education": [],
+                "experience": [],
+                "projects": [],
+                "certifications": []
+            }
+    
+    def enhance_application_data(self, resume_data, job_requirements):
+        """Enhance and validate application data using AI"""
+        try:
+            prompt = f"""
+            Enhance and validate the following resume data based on the job requirements.
+            Identify missing critical information and suggest improvements.
+            
+            Resume Data:
+            {json.dumps(resume_data, indent=2)}
+            
+            Job Requirements:
+            {json.dumps(job_requirements, indent=2)}
+            
+            Return enhanced data in this JSON format:
+            {{
+                "enhanced_data": {{
+                    // Same structure as input but with enhanced/validated data
+                }},
+                "missing_critical_fields": [
+                    {{
+                        "field": "field_name",
+                        "importance": "high/medium/low",
+                        "suggestion": "How to fill this field"
+                    }}
+                ],
+                "skill_gaps": [
+                    {{
+                        "required_skill": "Skill name",
+                        "candidate_level": "none/beginner/intermediate/advanced",
+                        "importance": "critical/important/nice_to_have",
+                        "suggestion": "How to acquire this skill"
+                    }}
+                ],
+                "recommendations": [
+                    "Recommendation 1",
+                    "Recommendation 2"
+                ],
+                "match_score": 85
+            }}
+            
+            Focus on:
+            1. Validating that all critical fields are filled
+            2. Identifying skill gaps compared to job requirements
+            3. Suggesting improvements to strengthen the application
+            4. Calculating an overall match score (0-100)
+            """
+            
+            response = self.client.chat.completions.create(
+                model=self.model,
+                messages=[
+                    {"role": "system", "content": "You are an expert career advisor and application reviewer."},
+                    {"role": "user", "content": prompt}
+                ],
+                temperature=0.2
+            )
+            
+            enhanced_text = response.choices[0].message.content
+            return json.loads(enhanced_text)
+            
+        except Exception as e:
+            print(f"Error enhancing application data: {e}")
+            return {
+                "enhanced_data": resume_data,
+                "missing_critical_fields": [],
+                "skill_gaps": [],
+                "recommendations": ["Please review your application for completeness"],
+                "match_score": 50
             }
