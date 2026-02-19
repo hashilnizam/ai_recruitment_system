@@ -28,12 +28,20 @@ const register = async (req, res) => {
     const { email, password, firstName, lastName, role, companyName, phone } = req.body;
 
     // Check if user already exists
-    const [existingUsers] = await db.query(
+    const existingUsersResult = await db.query(
       'SELECT id FROM users WHERE email = ?',
       [email]
     );
 
-    if (existingUsers.length > 0) {
+    console.log('Checking existing user for email:', email);
+    console.log('Query result:', existingUsersResult);
+
+    const existingUsers = existingUsersResult[0] || [];
+
+    if (!existingUsers || existingUsers.length === 0) {
+      console.log('User does not exist, proceeding with registration');
+    } else {
+      console.log('User already exists, returning error');
       return res.status(400).json({
         success: false,
         message: 'User with this email already exists'
@@ -52,10 +60,16 @@ const register = async (req, res) => {
     );
 
     // Get created user
-    const [users] = await db.query(
+    const usersResult = await db.query(
       'SELECT id, email, first_name, last_name, role, company_name, phone, created_at FROM users WHERE id = ?',
       [result.insertId]
     );
+
+    const users = usersResult[0] || [];
+
+    if (!users || users.length === 0) {
+      throw new Error('Failed to retrieve created user');
+    }
 
     const user = users[0];
 
@@ -97,16 +111,18 @@ const login = async (req, res) => {
     const { email, password } = req.body;
 
     // Get user
-    const users = await db.query(
+    const usersResult = await db.query(
       `SELECT id, email, password_hash, first_name, last_name, role, company_name, phone, is_active
        FROM users WHERE email = ?`,
       [email]
     );
 
-    console.log('Login query result:', users); // Debug log
-    console.log('Users array length:', users.length); // Debug log
+    console.log('Login query result:', usersResult); // Debug log
+    console.log('Users array length:', usersResult?.length || 0); // Debug log
 
-    if (users.length === 0) {
+    const users = usersResult[0] || [];
+
+    if (!users || users.length === 0) {
       return res.status(401).json({
         success: false,
         message: 'Invalid email or password'
@@ -201,7 +217,7 @@ const getProfile = async (req, res) => {
       [req.user.id]
     );
 
-    if (users.length === 0) {
+    if (!users || users.length === 0) {
       return res.status(404).json({
         success: false,
         message: 'User not found'
@@ -262,9 +278,59 @@ const updateProfile = async (req, res) => {
   }
 };
 
+/**
+ * Forgot password
+ * POST /api/auth/forgot-password
+ */
+const forgotPassword = async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({
+        success: false,
+        message: 'Email is required'
+      });
+    }
+
+    // Check if user exists
+    const [users] = await db.query(
+      'SELECT id, email, first_name FROM users WHERE email = ?',
+      [email]
+    );
+
+    if (!users || users.length === 0) {
+      // Don't reveal if email exists or not for security
+      return res.json({
+        success: true,
+        message: 'If an account with that email exists, a password reset link has been sent.'
+      });
+    }
+
+    const user = users[0];
+
+    // For now, just return success (in production, you'd send an actual email)
+    // TODO: Implement email service for password reset
+    console.log(`Password reset requested for: ${user.email} (${user.first_name})`);
+
+    res.json({
+      success: true,
+      message: 'If an account with that email exists, a password reset link has been sent.'
+    });
+  } catch (error) {
+    console.error('Forgot password error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to process password reset request',
+      error: error.message
+    });
+  }
+};
+
 module.exports = {
   register,
   login,
+  forgotPassword,
   getProfile,
   updateProfile
 };

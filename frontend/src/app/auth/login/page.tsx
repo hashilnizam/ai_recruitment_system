@@ -26,11 +26,35 @@ export default function LoginPage() {
     e.preventDefault();
     setLoading(true);
 
+    // Basic validation
+    if (!formData.email || !formData.password) {
+      toast.error('Please fill in all fields');
+      setLoading(false);
+      return;
+    }
+
+    if (!formData.email.includes('@')) {
+      toast.error('Please enter a valid email address');
+      setLoading(false);
+      return;
+    }
+
     try {
       await login(formData.email, formData.password);
-      toast.success('Login successful!');
+      toast.success('Login successful! Redirecting...');
     } catch (error: any) {
-      toast.error(error.message || 'Login failed');
+      console.error('Login error:', error);
+      
+      // Handle different error scenarios
+      if (error.message?.includes('Invalid email or password')) {
+        toast.error('Invalid email or password. Please try again.');
+      } else if (error.message?.includes('deactivated')) {
+        toast.error('Your account has been deactivated. Please contact support.');
+      } else if (error.message?.includes('network')) {
+        toast.error('Network error. Please check your connection and try again.');
+      } else {
+        toast.error(error.message || 'Login failed. Please try again.');
+      }
     } finally {
       setLoading(false);
     }
@@ -99,6 +123,12 @@ export default function LoginPage() {
               Don't have an account?{' '}
               <Link href="/auth/register" className="text-primary-600 hover:text-primary-700 font-medium">
                 Sign up
+              </Link>
+            </p>
+
+            <p className="text-center text-gray-600 mt-4">
+              <Link href="/auth/forgot-password" className="text-primary-600 hover:text-primary-700 font-medium">
+                Forgot your password?
               </Link>
             </p>
           </div>

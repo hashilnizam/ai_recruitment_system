@@ -36,7 +36,19 @@ export default function RegisterPage() {
     e.preventDefault();
     setLoading(true);
 
-    // Validation
+    // Enhanced validation
+    if (!formData.email || !formData.password || !formData.firstName || !formData.lastName) {
+      toast.error('Please fill in all required fields');
+      setLoading(false);
+      return;
+    }
+
+    if (!formData.email.includes('@')) {
+      toast.error('Please enter a valid email address');
+      setLoading(false);
+      return;
+    }
+
     if (formData.password !== formData.confirmPassword) {
       toast.error('Passwords do not match');
       setLoading(false);
@@ -45,6 +57,12 @@ export default function RegisterPage() {
 
     if (formData.password.length < 6) {
       toast.error('Password must be at least 6 characters');
+      setLoading(false);
+      return;
+    }
+
+    if (formData.role === 'recruiter' && !formData.companyName) {
+      toast.error('Company name is required for recruiters');
       setLoading(false);
       return;
     }
@@ -71,13 +89,23 @@ export default function RegisterPage() {
       const data = await response.json();
 
       if (data.success) {
-        toast.success('Account created successfully! Please sign in.');
-        router.push('/auth/login');
+        toast.success('Account created successfully! Redirecting to login...');
+        setTimeout(() => {
+          router.push('/auth/login');
+        }, 1500);
       } else {
-        toast.error(data.message || 'Registration failed');
+        // Handle specific error messages
+        if (data.message?.includes('already exists')) {
+          toast.error('An account with this email already exists. Please try logging in.');
+        } else if (data.message?.includes('network')) {
+          toast.error('Network error. Please check your connection and try again.');
+        } else {
+          toast.error(data.message || 'Registration failed. Please try again.');
+        }
       }
     } catch (error) {
-      toast.error('Network error. Please try again.');
+      console.error('Registration error:', error);
+      toast.error('Network error. Please check your connection and try again.');
     } finally {
       setLoading(false);
     }

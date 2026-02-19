@@ -27,6 +27,16 @@ router.post('/login',
   asyncHandler(authController.login)
 );
 
+// Forgot password
+router.post('/forgot-password',
+  authLimiter,
+  [
+    body('email').isEmail().withMessage('Please provide a valid email')
+  ],
+  validate,
+  asyncHandler(authController.forgotPassword)
+);
+
 // Get current user profile
 router.get('/me',
   authenticateToken,
