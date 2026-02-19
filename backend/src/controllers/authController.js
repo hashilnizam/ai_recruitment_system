@@ -36,7 +36,7 @@ const register = async (req, res) => {
     console.log('Checking existing user for email:', email);
     console.log('Query result:', existingUsersResult);
 
-    const existingUsers = existingUsersResult[0] || [];
+    const existingUsers = existingUsersResult || [];
 
     if (!existingUsers || existingUsers.length === 0) {
       console.log('User does not exist, proceeding with registration');
@@ -53,7 +53,7 @@ const register = async (req, res) => {
     const passwordHash = await bcrypt.hash(password, saltRounds);
 
     // Insert user
-    const [result] = await db.query(
+    const result = await db.insert(
       `INSERT INTO users (email, password_hash, first_name, last_name, role, company_name, phone)
        VALUES (?, ?, ?, ?, ?, ?, ?)`,
       [email, passwordHash, firstName, lastName, role, companyName || null, phone || null]
@@ -65,7 +65,7 @@ const register = async (req, res) => {
       [result.insertId]
     );
 
-    const users = usersResult[0] || [];
+    const users = usersResult || [];
 
     if (!users || users.length === 0) {
       throw new Error('Failed to retrieve created user');
@@ -120,7 +120,7 @@ const login = async (req, res) => {
     console.log('Login query result:', usersResult); // Debug log
     console.log('Users array length:', usersResult?.length || 0); // Debug log
 
-    const users = usersResult[0] || [];
+    const users = usersResult || [];
 
     if (!users || users.length === 0) {
       return res.status(401).json({
@@ -211,7 +211,7 @@ const login = async (req, res) => {
  */
 const getProfile = async (req, res) => {
   try {
-    const [users] = await db.query(
+    const users = await db.query(
       `SELECT id, email, first_name, last_name, role, company_name, phone, created_at
        FROM users WHERE id = ?`,
       [req.user.id]
@@ -294,7 +294,7 @@ const forgotPassword = async (req, res) => {
     }
 
     // Check if user exists
-    const [users] = await db.query(
+    const users = await db.query(
       'SELECT id, email, first_name FROM users WHERE email = ?',
       [email]
     );
