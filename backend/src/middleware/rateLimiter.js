@@ -60,9 +60,12 @@ const createRateLimiter = (options) => {
       return req.ip + ':' + (req.user?.id || 'anonymous') + ':' + (req.path || 'unknown');
     },
     skip: (req) => {
-      // Skip rate limiting for trusted IPs or internal requests
-      const trustedIPs = ['127.0.0.1', '::1'];
-      return trustedIPs.includes(req.ip);
+      // Skip rate limiting for trusted IPs or internal requests in development
+      const trustedIPs = ['127.0.0.1', '::1', 'localhost'];
+      const isTrustedIP = trustedIPs.includes(req.ip) || 
+                         trustedIPs.includes(req.hostname) ||
+                         process.env.NODE_ENV === 'development';
+      return isTrustedIP;
     }
   });
 };
@@ -70,7 +73,7 @@ const createRateLimiter = (options) => {
 // Specific rate limiters
 const authLimiter = createRateLimiter({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 5, // 5 attempts per 15 minutes
+  max: process.env.NODE_ENV === 'development' ? 100 : 5, // 100 attempts in dev, 5 in prod
   message: 'Too many authentication attempts, please try again later.'
 });
 

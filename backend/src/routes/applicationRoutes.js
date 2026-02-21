@@ -4,7 +4,7 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
-const pdfParse = require('pdf-parse');
+const { PDFParse } = require('pdf-parse');
 const axios = require('axios');
 const db = require('../config/database');
 const { authenticateToken, authorizeRole } = require('../middleware/auth');
@@ -66,20 +66,14 @@ async function extractTextFromPDF(filePath) {
   try {
     const dataBuffer = fs.readFileSync(filePath);
     
-    // Use Promise-based approach for pdf-parse
-    return new Promise((resolve, reject) => {
-      pdfParse(dataBuffer, (err, data) => {
-        if (err) {
-          console.error('PDF parsing error:', err);
-          reject(new Error('Failed to extract text from PDF'));
-        } else {
-          resolve(data.text);
-        }
-      });
-    });
+    // Use pdf-parse v2.x API with PDFParse class
+    const parser = new PDFParse({ data: dataBuffer });
+    const result = await parser.getText();
+    await parser.destroy();
+    return result.text;
   } catch (error) {
-    console.error('Error reading PDF file:', error);
-    throw new Error('Failed to read PDF file');
+    console.error('PDF parsing error:', error);
+    throw new Error('Failed to extract text from PDF');
   }
 }
 
@@ -647,5 +641,56 @@ router.get('/:id/resume', authenticateToken, async (req, res) => {
     });
   }
 });
+
+// Resume extraction endpoint
+router.post('/extract-resume', 
+  authenticateToken, 
+  requireCandidate,
+  upload.single('resume'),
+  uploadLimiter,
+  asyncHandler(async (req, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({
+          success: false,
+          message: 'No resume file uploaded'
+        });
+      }
+
+      console.log('🤖 Starting AI resume extraction for:', req.file.originalname);
+      
+      // Read the file buffer
+      const resumeBuffer = fs.readFileSync(req.file.path);
+      
+      // Use the enhanced resume parser with AI service
+      const resumeParser = new EnhancedResumeParser();
+      const extractedData = await resumeParser.parseResume(resumeBuffer, req.file.originalname);
+      
+      // Clean up the uploaded file
+      fs.unlinkSync(req.file.path);
+      
+      console.log('✅ Resume extraction completed successfully');
+      
+      res.json({
+        success: true,
+        data: extractedData,
+        message: 'Resume data extracted successfully'
+      });
+
+    } catch (error) {
+      console.error('❌ Resume extraction error:', error);
+      
+      // Clean up the uploaded file if it exists
+      if (req.file && fs.existsSync(req.file.path)) {
+        fs.unlinkSync(req.file.path);
+      }
+      
+      res.status(500).json({
+        success: false,
+        message: `Resume extraction failed: ${error.message}`
+      });
+    }
+  })
+);
 
 module.exports = router;

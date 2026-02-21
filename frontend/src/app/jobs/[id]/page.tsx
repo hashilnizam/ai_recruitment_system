@@ -7,6 +7,7 @@ import Layout from '@/components/Layout';
 import LoadingSpinner from '@/components/LoadingSpinner';
 import ResumeUpload from '@/components/ResumeUpload';
 import { jobsAPI, applicationsAPI } from '@/lib/api';
+import api from '@/lib/api';
 import { 
   BriefcaseIcon, 
   MapPinIcon, 
@@ -34,6 +35,9 @@ export default function JobDetailPage() {
     experience: '',
     coverLetter: ''
   });
+  const [extractedData, setExtractedData] = useState<any>(null);
+  const [isExtracting, setIsExtracting] = useState(false);
+  const [showExtractedForm, setShowExtractedForm] = useState(false);
   const [hasApplied, setHasApplied] = useState(false);
 
   useEffect(() => {
@@ -98,12 +102,116 @@ export default function JobDetailPage() {
     }
   };
 
-  const handleFileSelect = (file: File) => {
+  const handleFileSelect = async (file: File) => {
     setSelectedFile(file);
+    
+    // Start AI extraction when file is selected
+    if (file && file.type === 'application/pdf') {
+      setIsExtracting(true);
+      setExtractedData(null);
+      setShowExtractedForm(false);
+      
+      try {
+        console.log('🤖 Starting AI resume extraction...');
+        
+        // Create form data for file upload
+        const formData = new FormData();
+        formData.append('resume', file);
+        
+        // Call backend to extract resume data using API client
+        const response = await api.post('/api/applications/extract-resume', formData);
+        
+        const result = response.data;
+        
+        console.log('🔍 Full API response:', result);
+        console.log('🔍 result.success:', result.success);
+        console.log('🔍 result.message:', result.message);
+        
+        // The API returns the data directly, not wrapped in success/data structure
+        const extractedData = result;
+        const hasSuccess = result.success !== undefined ? result.success : true;
+        
+        if (hasSuccess && extractedData) {
+          console.log('✅ Resume extraction successful:', extractedData);
+          console.log('📊 Raw AI response:', JSON.stringify(extractedData, null, 2));
+          setExtractedData(extractedData);
+          
+          // Check if any meaningful data was extracted
+          const hasExtractedData = extractedData && (
+            (extractedData.skills && extractedData.skills.length > 0) ||
+            (extractedData.education && extractedData.education.length > 0) ||
+            (extractedData.experience && extractedData.experience.length > 0)
+          );
+          
+          if (!hasExtractedData) {
+            console.warn('⚠️ No meaningful data extracted from resume');
+            toast('AI couldn\'t extract detailed information from your resume. You can enter the details manually.', {
+              icon: '⚠️',
+              duration: 5000
+            });
+            // Still show the form but with empty fields for manual input
+            setShowExtractedForm(true);
+            setApplicationData({
+              skills: '',
+              education: '',
+              experience: '',
+              coverLetter: ''
+            });
+            return;
+          }
+          
+          // Auto-fill form with extracted data
+          const newApplicationData = {
+            skills: extractedData.skills ? 
+              (Array.isArray(extractedData.skills) 
+                ? extractedData.skills.map((s: any) => s.name || s.skill_name || s).join(', ')
+                : extractedData.skills) 
+              : '',
+            education: extractedData.education ? 
+              (Array.isArray(extractedData.education)
+                ? extractedData.education.map((edu: any) => 
+                    `${edu.degree || ''} in ${edu.field || edu.field_of_study || ''} at ${edu.institution || ''}`
+                  ).join('\n')
+                : extractedData.education)
+              : '',
+            experience: extractedData.experience ?
+              (Array.isArray(extractedData.experience)
+                ? extractedData.experience.map((exp: any) => 
+                    `${exp.title || exp.job_title || ''} at ${exp.company || ''}\n${exp.description || ''}`
+                  ).join('\n\n')
+                : extractedData.experience)
+              : '',
+            coverLetter: '' // Cover letter is not extracted
+          };
+          
+          console.log('📝 Application data to set:', newApplicationData);
+          setApplicationData(newApplicationData);
+          setShowExtractedForm(true);
+          console.log('👀 showExtractedForm set to true');
+          toast.success('Resume data extracted successfully!');
+        } else {
+          console.error('❌ Resume extraction failed:', result.message);
+          toast.error(result.message || 'Failed to extract resume data');
+        }
+      } catch (error) {
+        console.error('❌ Error during resume extraction:', error);
+        toast.error('Failed to extract resume data. Please try again.');
+      } finally {
+        setIsExtracting(false);
+      }
+    }
   };
 
   const handleFileRemove = () => {
     setSelectedFile(null);
+    setExtractedData(null);
+    setShowExtractedForm(false);
+    setApplicationData({
+      skills: '',
+      education: '',
+      experience: '',
+      coverLetter: ''
+    });
   };
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
@@ -320,7 +428,7 @@ export default function JobDetailPage() {
             <h2 className="text-2xl font-bold text-gray-900 mb-6">Apply for {job.title}</h2>
             
             <form onSubmit={handleSubmitApplication} className="space-y-6">
-              {/* Resume Upload */}
+              {/* Resume Upload with AI Extraction */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Resume *
@@ -329,86 +437,106 @@ export default function JobDetailPage() {
                   onFileSelect={handleFileSelect}
                   onFileRemove={handleFileRemove}
                   selectedFile={selectedFile}
-                  loading={applying}
+                  loading={isExtracting || applying}
                 />
+                
+                {/* AI Extraction Status */}
+                {isExtracting && (
+                  <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                    <div className="flex items-center space-x-2">
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
+                      <span className="text-sm text-blue-700">AI is extracting data from your resume...</span>
+                    </div>
+                  </div>
+                )}
+                
+                {extractedData && (
+                  <div className="mt-3 p-3 bg-green-50 border border-green-200 rounded-lg">
+                    <div className="flex items-center space-x-2">
+                      <CheckCircleIcon size={16} className="text-green-600" />
+                      <span className="text-sm text-green-700">Resume data extracted successfully!</span>
+                    </div>
+                  </div>
+                )}
               </div>
 
-              {/* Skills */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Skills *
-                </label>
-                <textarea
-                  name="skills"
-                  value={applicationData.skills}
-                  onChange={handleInputChange}
-                  rows={3}
-                  placeholder="List your relevant skills (comma-separated)..."
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  required
-                />
-                <p className="text-xs text-gray-500 mt-1">
-                  Example: JavaScript, React, Node.js, Python, AWS
-                </p>
-              </div>
+              {/* Extracted Data Form - Only show after AI extraction */}
+              {showExtractedForm && (
+                <>
+                  {console.log('🎯 Rendering extracted form, showExtractedForm:', showExtractedForm)}
+                  <div className="border-t pt-6">
+                    <h3 className="text-lg font-semibold text-gray-900 mb-4">Review Extracted Information</h3>
+                    <p className="text-sm text-gray-600 mb-6">
+                      AI has extracted the following information from your resume. Please review and edit as needed.
+                    </p>
+                  </div>
+                  
+                  {/* Skills */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Skills *
+                    </label>
+                    <textarea
+                      name="skills"
+                      value={applicationData.skills}
+                      onChange={handleInputChange}
+                      rows={3}
+                      placeholder="List your relevant skills (comma-separated)..."
+                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      required
+                    />
+                    <p className="text-xs text-gray-500 mt-1">
+                      Example: JavaScript, React, Node.js, Python, AWS
+                    </p>
+                  </div>
 
-              {/* Education */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Education
-                </label>
-                <textarea
-                  name="education"
-                  value={applicationData.education}
-                  onChange={handleInputChange}
-                  rows={3}
-                  placeholder="Your educational background..."
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                />
-              </div>
+                  {/* Education */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Education
+                    </label>
+                    <textarea
+                      name="education"
+                      value={applicationData.education}
+                      onChange={handleInputChange}
+                      rows={3}
+                      placeholder="Your educational background..."
+                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    />
+                  </div>
 
-              {/* Experience */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Work Experience
-                </label>
-                <textarea
-                  name="experience"
-                  value={applicationData.experience}
-                  onChange={handleInputChange}
-                  rows={4}
-                  placeholder="Your relevant work experience..."
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                />
-              </div>
-
-              {/* Cover Letter */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Cover Letter
-                </label>
-                <textarea
-                  name="coverLetter"
-                  value={applicationData.coverLetter}
-                  onChange={handleInputChange}
-                  rows={4}
-                  placeholder="Why are you interested in this position? (Optional)"
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                />
-              </div>
+                  {/* Experience */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Work Experience
+                    </label>
+                    <textarea
+                      name="experience"
+                      value={applicationData.experience}
+                      onChange={handleInputChange}
+                      rows={4}
+                      placeholder="Your relevant work experience..."
+                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    />
+                  </div>
+                </>
+              )}
 
               {/* Submit Buttons */}
               <div className="flex space-x-4">
                 <button
                   type="submit"
-                  disabled={applying || !selectedFile}
+                  disabled={applying || !selectedFile || !showExtractedForm}
                   className="flex-1 bg-blue-500 text-white px-6 py-3 rounded-lg font-medium hover:bg-blue-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {applying ? 'Submitting...' : 'Submit Application'}
                 </button>
                 <button
                   type="button"
-                  onClick={() => setShowApplicationForm(false)}
+                  onClick={() => {
+                    setShowApplicationForm(false);
+                    setShowExtractedForm(false);
+                  }}
                   className="px-6 py-3 border border-gray-300 text-gray-700 rounded-lg font-medium hover:bg-gray-50 transition-colors"
                 >
                   Cancel

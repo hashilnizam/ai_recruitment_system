@@ -274,7 +274,36 @@ class AIService:
             )
             
             extracted_text = response.choices[0].message.content
-            return json.loads(extracted_text)
+            print(f"🤖 OpenAI raw response: {extracted_text}")
+            
+            try:
+                parsed_data = json.loads(extracted_text)
+                print(f"✅ JSON parsing successful: {parsed_data}")
+                return parsed_data
+            except json.JSONDecodeError as je:
+                print(f"❌ JSON parsing failed: {je}")
+                print(f"❌ Raw text that failed to parse: {repr(extracted_text)}")
+                # Try to extract JSON from the response if it's wrapped in markdown
+                if '```json' in extracted_text:
+                    json_start = extracted_text.find('```json') + 7
+                    json_end = extracted_text.find('```', json_start)
+                    if json_end != -1:
+                        json_text = extracted_text[json_start:json_end].strip()
+                        print(f"🔧 Trying to extract JSON from markdown: {json_text}")
+                        try:
+                            return json.loads(json_text)
+                        except json.JSONDecodeError:
+                            pass
+                
+                # Return fallback data
+                return {
+                    "personal_info": {},
+                    "skills": [],
+                    "education": [],
+                    "experience": [],
+                    "projects": [],
+                    "certifications": []
+                }
             
         except Exception as e:
             print(f"Error extracting resume data: {e}")

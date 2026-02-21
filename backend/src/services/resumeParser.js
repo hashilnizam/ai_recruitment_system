@@ -1,12 +1,11 @@
 const { SkillDatabase } = require('../data/skillDatabase');
-const pdfParse = require('pdf-parse').default || require('pdf-parse');
+const { PDFParse } = require('pdf-parse');
+const axios = require('axios');
 
 class EnhancedResumeParser {
   constructor() {
     this.skillDB = new SkillDatabase();
-    this.commonWords = new Set([
-      'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by', 'is', 'are', 'was', 'were', 'be', 'been', 'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'could', 'should', 'may', 'might', 'can', 'must', 'shall', 'i', 'you', 'he', 'she', 'it', 'we', 'they', 'me', 'him', 'her', 'us', 'them', 'my', 'your', 'his', 'its', 'our', 'their', 'this', 'that', 'these', 'those', 'what', 'which', 'who', 'when', 'where', 'why', 'how', 'all', 'each', 'every', 'both', 'few', 'more', 'most', 'other', 'some', 'such', 'no', 'nor', 'not', 'only', 'own', 'same', 'so', 'than', 'too', 'very', 'just', 'if', 'then', 'else', 'when', 'while', 'because', 'since', 'until', 'as', 'though', 'although', 'after', 'before', 'during', 'under', 'above', 'between', 'among', 'through', 'against', 'without', 'upon', 'from', 'up', 'down', 'out', 'off', 'over', 'again', 'further', 'then', 'once', 'here', 'there', 'why', 'how', 'all', 'any', 'both', 'each', 'few', 'more', 'most', 'other', 'some', 'such', 'no', 'nor', 'not', 'only', 'own', 'same', 'so', 'than', 'too', 'very', 's', 't', 'can', 'will', 'just', 'don', 'should', 'now'
-    ]);
+    this.aiServiceUrl = 'http://localhost:5001';
   }
 
   async parseResume(resumeBuffer, filename) {
@@ -17,21 +16,14 @@ class EnhancedResumeParser {
       let text;
       if (filename.endsWith('.pdf')) {
         try {
-          // Try promise-based approach first (pdf-parse v2.x)
-          const pdfData = await pdfParse(resumeBuffer);
+          // Use pdf-parse v2.x API with PDFParse class
+          const parser = new PDFParse({ data: resumeBuffer });
+          const pdfData = await parser.getText();
           text = pdfData.text;
-        } catch (promiseError) {
-          // Fallback to callback-based approach (pdf-parse v1.x)
-          const pdfData = await new Promise((resolve, reject) => {
-            pdfParse(resumeBuffer, (err, data) => {
-              if (err) {
-                reject(err);
-              } else {
-                resolve(data);
-              }
-            });
-          });
-          text = pdfData.text;
+          await parser.destroy();
+        } catch (error) {
+          console.error('PDF parsing error:', error);
+          throw new Error('Failed to extract text from PDF');
         }
       } else {
         // Handle other file types (DOC, DOCX) - for now, convert to text
@@ -40,34 +32,55 @@ class EnhancedResumeParser {
       
       console.log('📄 Text extracted, length:', text.length);
       
-      // Parse different sections
-      const parsedData = {
-        personalInfo: this.extractPersonalInfo(text),
-        skills: this.extractSkills(text),
-        education: this.extractEducation(text),
-        experience: this.extractExperience(text),
-        projects: this.extractProjects(text),
-        certifications: this.extractCertifications(text),
-        languages: this.extractLanguages(text),
-        summary: this.extractSummary(text),
-        metadata: {
-          filename,
-          extractedAt: new Date().toISOString(),
-          wordCount: text.split(/\s+/).length,
-          confidence: 0
-        }
-      };
+      // Use AI service for intelligent parsing
+      console.log('🤖 Sending text to AI service for parsing...');
+      const aiResponse = await axios.post(`${this.aiServiceUrl}/api/parse-resume`, {
+        resume_text: text
+      }, {
+        timeout: 30000 // 30 second timeout
+      });
       
-      // Calculate confidence score
-      parsedData.metadata.confidence = this.calculateConfidence(parsedData);
+      if (aiResponse.data.success) {
+        console.log('✅ AI parsing completed successfully');
+        return aiResponse.data.data;
+      } else {
+        throw new Error(aiResponse.data.message || 'AI parsing failed');
+      }
       
-      console.log('✅ Resume parsing completed with confidence:', parsedData.metadata.confidence);
-      
-      return parsedData;
     } catch (error) {
       console.error('❌ Error parsing resume:', error);
+      
+      // Fallback to basic parsing if AI service fails
+      if (error.code === 'ECONNREFUSED' || error.message.includes('AI service')) {
+        console.log('⚠️ AI service unavailable, falling back to basic parsing...');
+        return this.fallbackParsing(text, filename);
+      }
+      
       throw new Error(`Resume parsing failed: ${error.message}`);
     }
+  }
+  
+  fallbackParsing(text, filename) {
+    console.log('🔄 Using fallback parsing method...');
+    
+    const parsedData = {
+      personalInfo: this.extractPersonalInfo(text),
+      skills: this.extractSkills(text),
+      education: this.extractEducation(text),
+      experience: this.extractExperience(text),
+      projects: this.extractProjects(text),
+      certifications: this.extractCertifications(text),
+      languages: this.extractLanguages(text),
+      summary: this.extractSummary(text),
+      metadata: {
+        filename,
+        extractedAt: new Date().toISOString(),
+        wordCount: text.split(/\s+/).length,
+        confidence: 0.5 // Lower confidence for fallback
+      }
+    };
+    
+    return parsedData;
   }
 
   extractPersonalInfo(text) {
