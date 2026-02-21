@@ -39,6 +39,7 @@ export default function JobDetailPage() {
   const [isExtracting, setIsExtracting] = useState(false);
   const [showExtractedForm, setShowExtractedForm] = useState(false);
   const [hasApplied, setHasApplied] = useState(false);
+  const [manualData, setManualData] = useState<any>({}); // Store manually added data
 
   useEffect(() => {
     if (id) {
@@ -87,10 +88,18 @@ export default function JobDetailPage() {
         console.log('📋 Applications API response:', response);
         
         // Handle both response structures
-        const applications = response.data || response.data?.data || [];
+        const applications = response.data?.data || response.data || [];
         console.log('📋 Applications data:', applications);
         
-        const alreadyApplied = applications.some((app: any) => app.job_id == id);
+        const alreadyApplied = applications.some((app: any) => 
+          app.job_id == id && app.status !== 'cancelled'
+        );
+        console.log('🔍 Checking if already applied:', {
+          jobId: id,
+          userApplications: applications,
+          alreadyApplied: alreadyApplied,
+          activeApplications: applications.filter((app: any) => app.job_id == id && app.status !== 'cancelled')
+        });
         setHasApplied(alreadyApplied);
       } else {
         // Recruiters don't apply to jobs
@@ -206,6 +215,7 @@ export default function JobDetailPage() {
     setSelectedFile(null);
     setExtractedData(null);
     setShowExtractedForm(false);
+    setManualData({}); // Clear manual data
     setApplicationData({
       skills: '',
       education: '',
@@ -244,20 +254,26 @@ export default function JobDetailPage() {
       console.log('📋 Skills:', applicationData.skills);
       console.log('📋 Resume file:', selectedFile);
 
-      const response = await applicationsAPI.submitApplication({
-        jobId: parseInt(id as string),
-        skills: applicationData.skills.split(',').map(skill => ({
-          name: skill.trim(),
-          proficiencyLevel: 'intermediate'
-        })),
-        education: applicationData.education,
-        experience: applicationData.experience,
-        resume: selectedFile
-      });
+      // Add timeout handling
+      const response = await Promise.race([
+        applicationsAPI.submitApplication({
+          jobId: parseInt(id as string),
+          skills: applicationData.skills.split(',').map(skill => ({
+            name: skill.trim(),
+            proficiencyLevel: 'intermediate'
+          })),
+          education: applicationData.education,
+          experience: applicationData.experience,
+          resume: selectedFile
+        }),
+        new Promise<never>((_, reject) => 
+          setTimeout(() => reject(new Error('Application submission timed out. Please try again.')), 25000)
+        )
+      ]);
 
       console.log('📊 Application response:', response);
 
-      if (response.success) {
+      if ((response as any).success) {
         toast.success('Application submitted successfully!');
         setHasApplied(true);
         setShowApplicationForm(false);
@@ -269,11 +285,24 @@ export default function JobDetailPage() {
           coverLetter: ''
         });
       } else {
-        toast.error(response.message || 'Failed to submit application');
+        toast.error((response as any).message || 'Failed to submit application');
       }
     } catch (error) {
       console.error('Error submitting application:', error);
-      toast.error('Failed to submit application');
+      
+      // Handle different types of errors
+      let errorMessage = 'Failed to submit application';
+      const errorObj = error as any;
+      
+      if (errorObj.message && errorObj.message.includes('timed out')) {
+        errorMessage = 'Application submission timed out. The AI processing is taking too long. Please try again or use a smaller resume file.';
+      } else if (errorObj.code === 'ECONNABORTED') {
+        errorMessage = 'Connection timed out. Please check your internet connection and try again.';
+      } else if (errorObj.response?.data?.message) {
+        errorMessage = errorObj.response.data.message;
+      }
+      
+      toast.error(errorMessage);
     } finally {
       setApplying(false);
     }
@@ -490,6 +519,29 @@ export default function JobDetailPage() {
                     </p>
                   </div>
 
+                  {/* Add Missing Skills Button */}
+                  <div className="mt-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const newSkill = prompt('Add a skill that AI might have missed:');
+                        if (newSkill && newSkill.trim()) {
+                          setApplicationData((prev: any) => ({
+                            ...prev,
+                            skills: prev.skills ? `${prev.skills}, ${newSkill.trim()}` : newSkill.trim()
+                          }));
+                          setManualData((prev: any) => ({
+                            ...prev,
+                            skills: [...(prev.skills || []), newSkill.trim()]
+                          }));
+                        }
+                      }}
+                      className="text-blue-600 hover:text-blue-800 text-sm font-medium"
+                    >
+                      + Add Missing Skill
+                    </button>
+                  </div>
+
                   {/* Education */}
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -503,6 +555,25 @@ export default function JobDetailPage() {
                       placeholder="Your educational background..."
                       className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const newEdu = prompt('Add education that AI might have missed:');
+                        if (newEdu && newEdu.trim()) {
+                          setApplicationData((prev: any) => ({
+                            ...prev,
+                            education: prev.education ? `${prev.education}\n${newEdu.trim()}` : newEdu.trim()
+                          }));
+                          setManualData((prev: any) => ({
+                            ...prev,
+                            education: [...(prev.education || []), newEdu.trim()]
+                          }));
+                        }
+                      }}
+                      className="text-blue-600 hover:text-blue-800 text-sm font-medium mt-2"
+                    >
+                      + Add Missing Education
+                    </button>
                   </div>
 
                   {/* Experience */}
@@ -518,6 +589,25 @@ export default function JobDetailPage() {
                       placeholder="Your relevant work experience..."
                       className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const newExp = prompt('Add experience that AI might have missed:');
+                        if (newExp && newExp.trim()) {
+                          setApplicationData((prev: any) => ({
+                            ...prev,
+                            experience: prev.experience ? `${prev.experience}\n\n${newExp.trim()}` : newExp.trim()
+                          }));
+                          setManualData((prev: any) => ({
+                            ...prev,
+                            experience: [...(prev.experience || []), newExp.trim()]
+                          }));
+                        }
+                      }}
+                      className="text-blue-600 hover:text-blue-800 text-sm font-medium mt-2"
+                    >
+                      + Add Missing Experience
+                    </button>
                   </div>
                 </>
               )}

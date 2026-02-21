@@ -309,8 +309,8 @@ class AdvancedScoringAlgorithm {
     // Extract from resume data if available
     if (resumeData && resumeData.skills) {
       const resumeSkills = [
-        ...resumeData.skills.technical,
-        ...resumeData.skills.soft
+        ...(resumeData.skills.technical || []),
+        ...(resumeData.skills.soft || [])
       ];
       
       // Merge and deduplicate
@@ -429,22 +429,26 @@ class AdvancedScoringAlgorithm {
   calculateExperienceRelevance(experience, jobRequirements) {
     let relevanceScore = 0;
     
-    experience.positions.forEach(position => {
-      const positionText = (position.position + ' ' + position.description).toLowerCase();
-      const jobTitle = jobRequirements.title.toLowerCase();
-      
-      // Check for relevant keywords
-      if (positionText.includes(jobTitle)) {
-        relevanceScore += 3;
-      }
-      
-      // Check for preferred roles
+    if (experience.positions && Array.isArray(experience.positions)) {
+      experience.positions.forEach(position => {
+        const positionText = (position.position + ' ' + position.description).toLowerCase();
+        const jobTitle = jobRequirements.title.toLowerCase();
+        
+        // Check for relevant keywords
+        if (positionText.includes(jobTitle)) {
+          relevanceScore += 3;
+        }
+      });
+    }
+    
+    // Check for preferred roles
+    if (jobRequirements.required_experience && jobRequirements.required_experience.preferred_roles) {
       jobRequirements.required_experience.preferred_roles.forEach(role => {
         if (positionText.includes(role.toLowerCase())) {
           relevanceScore += 2;
         }
       });
-    });
+    }
     
     return Math.min(relevanceScore, 5);
   }

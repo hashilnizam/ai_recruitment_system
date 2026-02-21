@@ -24,13 +24,34 @@ export default function ApplicationsPage() {
     fetchApplications();
   }, []);
 
+  const handleCancelApplication = async (applicationId: number) => {
+    try {
+      const response = await applicationsAPI.cancelApplication(applicationId);
+      console.log('Cancel response:', response);
+      
+      // Handle different response structures
+      const success = response.data?.success || response.success;
+      const message = response.data?.message || response.message || 'Application cancelled successfully';
+      
+      if (success) {
+        toast.success(message);
+        fetchApplications(); // Refresh the list
+      } else {
+        toast.error(message || 'Failed to cancel application');
+      }
+    } catch (error) {
+      console.error('Error cancelling application:', error);
+      toast.error('Failed to cancel application');
+    }
+  };
+
   const fetchApplications = async () => {
     try {
       setLoading(true);
       const response = await applicationsAPI.getMyApplications();
       
       if (DataValidation.validateApiResponse(response)) {
-        setApplications(response.data.data || []);
+        setApplications(response.data.data || response.data || []);
       } else {
         toast.error('Failed to fetch applications');
       }
@@ -43,6 +64,11 @@ export default function ApplicationsPage() {
   };
 
   const filteredApplications = applications.filter((app: any) => {
+    if (filter === 'cancelled') return app.status === 'cancelled';
+    
+    // Exclude cancelled applications from other views
+    if (app.status === 'cancelled') return false;
+    
     if (filter === 'all') return true;
     return app.status === filter;
   });
@@ -53,7 +79,8 @@ export default function ApplicationsPage() {
       ranked: 'bg-blue-100 text-blue-700',
       reviewed: 'bg-purple-100 text-purple-700',
       shortlisted: 'bg-green-100 text-green-700',
-      rejected: 'bg-red-100 text-red-700'
+      rejected: 'bg-red-100 text-red-700',
+      cancelled: 'bg-gray-100 text-gray-500'
     };
     return DataValidation.safeGetString(colors[status as keyof typeof colors] || 'bg-gray-100 text-gray-700');
   };
@@ -108,6 +135,7 @@ export default function ApplicationsPage() {
               <option value="reviewed">Reviewed</option>
               <option value="shortlisted">Shortlisted</option>
               <option value="rejected">Rejected</option>
+              <option value="cancelled">Cancelled</option>
             </select>
           </div>
         </div>
@@ -173,6 +201,14 @@ export default function ApplicationsPage() {
                             Rank: #{application.rank_position}
                           </span>
                         )}
+                        {application.status === 'pending' && (
+                          <button
+                            onClick={() => handleCancelApplication(application.id)}
+                            className="mt-2 bg-red-500 text-white px-3 py-1 rounded text-sm hover:bg-red-600 transition-colors"
+                          >
+                            Cancel Application
+                          </button>
+                        )}
                       </div>
                     </div>
 
@@ -202,15 +238,6 @@ export default function ApplicationsPage() {
                         </div>
                       </div>
                     )}
-                  </div>
-
-                  <div className="ml-4">
-                    <button
-                      onClick={() => window.location.href = `/jobs/${application.job_id}`}
-                      className="text-blue-600 hover:text-blue-700 font-medium text-sm"
-                    >
-                      View Job →
-                    </button>
                   </div>
                 </div>
               </div>

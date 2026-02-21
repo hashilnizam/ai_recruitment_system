@@ -221,7 +221,7 @@ export default function CandidateDashboard() {
                             </span>
                             {application.total_score && (
                               <span className="text-sm font-medium text-blue-600">
-                                Score: {application.total_score.toFixed(1)}
+                                Score: {parseFloat(application.total_score).toFixed(1)}
                               </span>
                             )}
                             <button className="text-blue-600 hover:text-blue-700 text-sm font-medium">

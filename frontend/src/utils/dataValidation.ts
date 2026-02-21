@@ -54,6 +54,13 @@ export class DataValidation {
       return false;
     }
     
+    // Handle both direct data and nested data.data structure
+    const applicationsData = response.data.data || response.data;
+    
+    if (!Array.isArray(applicationsData)) {
+      return false;
+    }
+    
     return true;
   }
 
