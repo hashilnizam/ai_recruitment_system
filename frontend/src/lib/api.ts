@@ -197,6 +197,25 @@ export const rankingsAPI = {
   getRankings: (jobId: number) => api.get(`/api/rankings/job/${jobId}`),
 };
 
+// Recruiter API
+export const recruiterAPI = {
+  getResumes: async () => {
+    const response = await api.get('/api/recruiter/resumes');
+    return response; // Return the full response (api.get already unwraps)
+  },
+  
+  uploadResumes: async (formData: FormData) => {
+    // Use the main API client to ensure authentication works properly
+    const response = await api.post('/api/recruiter/resumes', formData);
+    return response; // Return the full response (api.post already unwraps)
+  },
+  
+  deleteResume: async (id: number) => {
+    const response = await api.delete(`/api/recruiter/resumes/${id}`);
+    return response; // Return the full response since api.delete() already unwraps
+  },
+};
+
 // AI Service API (direct to AI service)
 export const aiAPI = {
   testConnection: () => 
