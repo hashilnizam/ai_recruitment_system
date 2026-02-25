@@ -328,7 +328,7 @@ router.put('/:id', authenticateToken, requireRecruiter, async (req, res) => {
 });
 
 // Get applications for a specific job
-router.get('/:id/applications', authenticateToken, authorizeRole('recruiter'), asyncHandler(async (req, res) => {
+router.get('/:id/applications', authenticateToken, authorizeRole('recruiter'), async (req, res) => {
   try {
     const jobId = parseInt(req.params.id);
     const userId = req.user.id;
@@ -373,7 +373,7 @@ router.get('/:id/applications', authenticateToken, authorizeRole('recruiter'), a
       message: 'Failed to fetch applications'
     });
   }
-}));
+});
 
 // Publish job
 router.post('/:id/publish', authenticateToken, requireRecruiter, async (req, res) => {
