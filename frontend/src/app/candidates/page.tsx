@@ -5,7 +5,8 @@ import { useRouter } from 'next/navigation';
 import Layout from '@/components/Layout';
 import Table from '@/components/Table';
 import LoadingSpinner from '@/components/LoadingSpinner';
-import { applicationsAPI, jobsAPI } from '@/lib/api';
+import MultiResumeUpload from '@/components/MultiResumeUpload';
+import { applicationsAPI, jobsAPI, recruiterAPI } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 import { 
   UsersIcon, 
@@ -13,7 +14,9 @@ import {
   StarIcon, 
   BarChart3Icon,
   SearchIcon,
-  FilterIcon
+  FilterIcon,
+  UploadIcon,
+  RefreshCwIcon
 } from 'lucide-react';
 
 export default function CandidatesPage() {
@@ -24,6 +27,8 @@ export default function CandidatesPage() {
   const [search, setSearch] = useState('');
   const [selectedJob, setSelectedJob] = useState<string>('all');
   const [jobs, setJobs] = useState<any[]>([]);
+  const [showUploadSection, setShowUploadSection] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => {
     if (user?.role !== 'recruiter') {
@@ -32,6 +37,23 @@ export default function CandidatesPage() {
     }
     fetchData();
   }, [user, router]);
+
+  // Auto-refresh data every 30 seconds to keep counts updated
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (!loading) {
+        fetchData();
+      }
+    }, 30000); // 30 seconds
+
+    return () => clearInterval(interval);
+  }, [loading]);
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    await fetchData();
+    setRefreshing(false);
+  };
 
   const fetchData = async () => {
     try {
@@ -54,11 +76,38 @@ export default function CandidatesPage() {
               ...app,
               jobTitle: job.title,
               jobId: job.id,
+              candidate_id: app.candidate_id,
+              status: app.application_status || app.status || 'pending',
+              total_score: app.total_score
             });
           });
         } catch (error) {
           console.error(`Error fetching applications for job ${job.id}:`, error);
         }
+      }
+
+      // Fetch recruiter resumes and add them as candidates
+      try {
+        const resumesResponse = await recruiterAPI.getResumes();
+        const resumes = resumesResponse.data?.data || [];
+        
+        resumes.forEach((resume: any) => {
+          allCandidates.push({
+            ...resume,
+            first_name: resume.original_name?.split('.')[0] || 'Unknown',
+            last_name: '',
+            email: 'resume-upload@system.com',
+            jobTitle: 'Direct Resume Upload',
+            jobId: 0,
+            candidate_id: resume.id,
+            status: 'pending',
+            total_score: null,
+            applied_at: resume.uploaded_at,
+            isResumeUpload: true
+          });
+        });
+      } catch (error) {
+        console.error('Error fetching recruiter resumes:', error);
       }
       
       setCandidates(allCandidates);
@@ -191,9 +240,41 @@ export default function CandidatesPage() {
       <div className="space-y-6 animate-fade-in">
         {/* Header with Stats */}
         <div>
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">All Candidates</h1>
-          <p className="text-gray-600">View and manage all candidate applications</p>
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-3xl font-bold text-gray-900 mb-2">All Candidates</h1>
+              <p className="text-gray-600">View and manage all candidate applications</p>
+            </div>
+            <div className="flex items-center space-x-3">
+              <button
+                onClick={handleRefresh}
+                disabled={refreshing}
+                className="flex items-center px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <RefreshCwIcon className={`w-4 h-4 mr-2 ${refreshing ? 'animate-spin' : ''}`} />
+                {refreshing ? 'Refreshing...' : 'Refresh'}
+              </button>
+              <button
+                onClick={() => setShowUploadSection(!showUploadSection)}
+                className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+              >
+                <UploadIcon className="w-4 h-4 mr-2" />
+                {showUploadSection ? 'Hide Upload' : 'Upload Resumes'}
+              </button>
+            </div>
+          </div>
         </div>
+
+        {/* Resume Upload Section */}
+        {showUploadSection && (
+          <MultiResumeUpload 
+            onUploadComplete={() => {
+              // Refresh candidates data after upload
+              fetchData();
+            }}
+            maxFiles={25}
+          />
+        )}
 
         {/* Stats Cards */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
@@ -242,7 +323,7 @@ export default function CandidatesPage() {
               <div>
                 <p className="text-sm text-gray-600 mb-1">Ranked</p>
                 <p className="text-3xl font-bold text-gray-900">
-                  {candidates.filter((c: any) => c.total_score).length}
+                  {candidates.filter((c: any) => c.status === 'ranked' || (c.total_score && c.total_score > 0)).length}
                 </p>
               </div>
               <div className="w-12 h-12 bg-gradient-to-br from-purple-400 to-purple-600 rounded-xl flex items-center justify-center text-white">

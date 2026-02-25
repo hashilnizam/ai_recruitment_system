@@ -5,10 +5,16 @@ import Layout from '@/components/Layout';
 import JobCard from '@/components/JobCard';
 import LoadingSpinner from '@/components/LoadingSpinner';
 import { jobsAPI } from '@/lib/api';
-import { SearchIcon, BriefcaseIcon, RocketIcon } from '@/components/Icons';
+import { useAuth } from '@/contexts/AuthContext';
+import { useRouter } from 'next/navigation';
+import { SearchIcon, BriefcaseIcon, RocketIcon, PlusIcon, UsersIcon } from '@/components/Icons';
 import { Job } from '@/types';
+import Link from 'next/link';
+import { showSuccessToast, showErrorToast } from '@/utils/toastConfig';
 
-export default function BrowseJobsPage() {
+export default function JobsPage() {
+  const { user } = useAuth();
+  const router = useRouter();
   const [jobs, setJobs] = useState<Job[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -16,13 +22,22 @@ export default function BrowseJobsPage() {
 
   useEffect(() => {
     fetchJobs();
-  }, []);
+  }, [user]);
 
   const fetchJobs = async () => {
     try {
       setLoading(true);
-      console.log('🔄 Fetching jobs...');
-      const response = await jobsAPI.getJobs({ status: 'published', limit: 50 });
+      console.log('🔄 Fetching jobs for role:', user?.role);
+      
+      // Fetch different jobs based on user role
+      let response;
+      if (user?.role === 'recruiter') {
+        // Recruiters see their own jobs (all statuses)
+        response = await jobsAPI.getJobs({ recruiterId: user.id, limit: 50 });
+      } else {
+        // Candidates see published jobs
+        response = await jobsAPI.getJobs({ status: 'published', limit: 50 });
+      }
       console.log('📊 Full API response:', response);
       console.log('📋 Response type:', typeof response);
       console.log('📋 Response is array:', Array.isArray(response));
@@ -93,12 +108,29 @@ export default function BrowseJobsPage() {
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-bold text-gray-900 mb-2">Browse Jobs</h1>
-            <p className="text-gray-600">Find your next career opportunity</p>
+            <h1 className="text-3xl font-bold text-gray-900 mb-2">
+              {user?.role === 'recruiter' ? 'My Jobs' : 'Browse Jobs'}
+            </h1>
+            <p className="text-gray-600">
+              {user?.role === 'recruiter' 
+                ? 'Manage your job postings and track applications' 
+                : 'Find your next career opportunity'
+              }
+            </p>
           </div>
           <div className="text-right">
+            {user?.role === 'recruiter' && (
+              <Link 
+                href="/jobs/create"
+                className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors mb-2"
+              >
+                <PlusIcon size={16} className="mr-2" />
+                Post New Job
+              </Link>
+            )}
             <p className="text-sm text-gray-600">
-              {filteredJobs.length} job{filteredJobs.length !== 1 ? 's' : ''} available
+              {filteredJobs.length} job{filteredJobs.length !== 1 ? 's' : ''} 
+              {user?.role === 'recruiter' ? ' posted' : ' available'}
             </p>
           </div>
         </div>

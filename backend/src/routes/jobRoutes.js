@@ -327,43 +327,53 @@ router.put('/:id', authenticateToken, requireRecruiter, async (req, res) => {
   }
 });
 
-// Delete job
-router.delete('/:id', authenticateToken, requireRecruiter, async (req, res) => {
+// Get applications for a specific job
+router.get('/:id/applications', authenticateToken, authorizeRole('recruiter'), asyncHandler(async (req, res) => {
   try {
-    const jobId = req.params.id;
-    const recruiterId = req.user.id;
+    const jobId = parseInt(req.params.id);
+    const userId = req.user.id;
 
-    // Check if job belongs to this recruiter
-    const jobs = await db.query(
+    // Verify job belongs to recruiter
+    const jobCheck = await db.query(
       'SELECT id FROM jobs WHERE id = ? AND recruiter_id = ?',
-      [jobId, recruiterId]
+      [jobId, userId]
     );
 
-    if (jobs.length === 0) {
+    if (!jobCheck[0] || jobCheck[0].length === 0) {
       return res.status(404).json({
         success: false,
-        message: 'Job not found'
+        message: 'Job not found or access denied'
       });
     }
 
-    // Delete applications first
-    await db.query('DELETE FROM applications WHERE job_id = ?', [jobId]);
-    
-    // Delete job
-    await db.query('DELETE FROM jobs WHERE id = ?', [jobId]);
+    // Get applications with candidate details and rankings
+    const applications = await db.query(
+      `SELECT a.*, 
+              u.first_name, u.last_name, u.email,
+              r.total_score, r.rank_position,
+              r.ai_analysis, r.skill_match,
+              a.status as application_status
+       FROM applications a
+       JOIN users u ON a.candidate_id = u.id
+       LEFT JOIN rankings r ON a.id = r.application_id
+       WHERE a.job_id = ?
+       ORDER BY a.applied_at DESC`,
+      [jobId]
+    );
 
     res.json({
       success: true,
-      message: 'Job deleted successfully'
+      data: applications
     });
+
   } catch (error) {
-    console.error('Error deleting job:', error);
+    console.error('Error fetching job applications:', error);
     res.status(500).json({
       success: false,
-      message: 'Failed to delete job'
+      message: 'Failed to fetch applications'
     });
   }
-});
+}));
 
 // Publish job
 router.post('/:id/publish', authenticateToken, requireRecruiter, async (req, res) => {

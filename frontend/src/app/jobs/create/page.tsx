@@ -44,14 +44,14 @@ export default function CreateJob() {
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
-    setFormData(prev => ({
+    setFormData((prev: any) => ({
       ...prev,
       [name]: value
     }));
     
     // Clear error when user starts typing
     if (errors[name]) {
-      setErrors(prev => ({
+      setErrors((prev: any) => ({
         ...prev,
         [name]: undefined
       }));
@@ -69,15 +69,35 @@ export default function CreateJob() {
 
     try {
       const jobData = {
-        ...formData,
+        title: formData.title,
+        description: formData.description,
+        requirements: formData.requirements,
+        location: formData.location,
+        job_type: formData.job_type,
+        employment_type: formData.job_type, // Map job_type to employment_type
+        salary_min: formData.salary_min ? parseInt(formData.salary_min) : 0,
+        salary_max: formData.salary_max ? parseInt(formData.salary_max) : 0,
         skills: formData.skills.split(',').map(skill => skill.trim()).filter(Boolean)
       };
 
       const response = await jobsAPI.createJob(jobData);
 
-      if (DataValidation.validateApiResponse(response)) {
-        toast.success('Job created successfully!');
-        router.push('/dashboard/recruiter');
+      console.log('Job creation response:', response);
+
+      // For job creation, check if response has success property or data
+      if (response && (response.success || response.data)) {
+        toast.success('Job created successfully!', {
+          icon: '✅',
+          style: {
+            background: '#000000',
+            color: '#fff',
+            border: '1px solid #333333',
+          },
+        });
+        // Add small delay to ensure toast shows before redirect
+        setTimeout(() => {
+          router.push('/jobs');
+        }, 1000);
       } else {
         toast.error(response.message || 'Failed to create job');
       }

@@ -35,16 +35,28 @@ export default function RootLayout({
               },
               success: {
                 duration: 3000,
+                icon: '✅',
                 iconTheme: {
                   primary: '#22c55e',
                   secondary: '#fff',
                 },
+                style: {
+                  background: '#000000',
+                  color: '#fff',
+                  border: '1px solid #333333',
+                },
               },
               error: {
                 duration: 5000,
+                icon: '❌',
                 iconTheme: {
                   primary: '#ef4444',
                   secondary: '#fff',
+                },
+                style: {
+                  background: '#ef4444',
+                  color: '#fff',
+                  border: '1px solid #dc2626',
                 },
               },
             }}

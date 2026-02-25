@@ -754,4 +754,125 @@ router.post('/:id/cancel', authenticateToken, requireCandidate, asyncHandler(asy
   }
 }));
 
+// Update application status
+router.patch('/:id/status', authenticateToken, authorizeRole('recruiter'), asyncHandler(async (req, res) => {
+  try {
+    const applicationId = req.params.id;
+    const { status } = req.body;
+    const recruiterId = req.user.id;
+
+    // Validate status
+    const validStatuses = ['pending', 'shortlisted', 'ranked', 'rejected'];
+    if (!validStatuses.includes(status)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid status. Must be one of: ' + validStatuses.join(', ')
+      });
+    }
+
+    // Get application and verify recruiter owns the job
+    const applicationQuery = await db.query(
+      `SELECT a.*, j.recruiter_id 
+       FROM applications a 
+       JOIN jobs j ON a.job_id = j.id 
+       WHERE a.id = ?`,
+      [applicationId]
+    );
+
+    if (!applicationQuery[0] || applicationQuery[0].length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Application not found'
+      });
+    }
+
+    const application = applicationQuery[0];
+
+    if (application.recruiter_id !== recruiterId) {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied'
+      });
+    }
+
+    // Update application status
+    await db.query(
+      'UPDATE applications SET status = ?, updated_at = NOW() WHERE id = ?',
+      [status, applicationId]
+    );
+
+    console.log(`✅ Application ${applicationId} status updated to: ${status}`);
+
+    res.json({
+      success: true,
+      message: 'Application status updated successfully',
+      data: {
+        id: applicationId,
+        status: status
+      }
+    });
+
+  } catch (error) {
+    console.error('Error updating application status:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to update application status'
+    });
+  }
+}));
+
+// Delete application
+router.delete('/:id', authenticateToken, async (req, res) => {
+  try {
+    const applicationId = req.params.id;
+    const userId = req.user.id;
+
+    // Get application details
+    const application = await db.query(
+      'SELECT * FROM applications WHERE id = ?',
+      [applicationId]
+    );
+
+    if (!application[0] || application[0].length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Application not found'
+      });
+    }
+
+    const app = application[0];
+
+    // Check if user owns the application or is the recruiter
+    if (app.candidate_id !== userId) {
+      // Check if user is the recruiter for this job
+      const job = await db.query(
+        'SELECT recruiter_id FROM jobs WHERE id = ?',
+        [app.job_id]
+      );
+
+      if (!job[0] || job[0].recruiter_id !== userId) {
+        return res.status(403).json({
+          success: false,
+          message: 'Access denied'
+        });
+      }
+    }
+
+    // Delete application
+    await db.query('DELETE FROM applications WHERE id = ?', [applicationId]);
+
+    res.json({
+      success: true,
+      message: 'Application deleted successfully'
+    });
+
+  } catch (error) {
+    console.error('Error deleting application:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to delete application'
+    });
+  }
+});
+
 module.exports = router;

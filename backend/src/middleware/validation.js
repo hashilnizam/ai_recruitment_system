@@ -11,7 +11,7 @@ const isValidPhone = (phone) => {
 };
 
 const isValidName = (name) => {
-  return validator.isLength(name, { min: 2, max: 100 }) && /^[a-zA-Z\s'-]+$/.test(name);
+  return validator.isLength(name, { min: 1, max: 100 }) && /^[a-zA-Z\s'-]+$/.test(name);
 };
 
 const sanitizeInput = (input) => {
@@ -31,13 +31,13 @@ const validateRegistration = [
   body('password').matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/).withMessage('Password must contain at least one lowercase, one uppercase, and one number'),
   body('firstName').custom((value) => {
     if (!isValidName(value)) {
-      throw new Error('First name must be 2-100 characters and contain only letters, spaces, and hyphens');
+      throw new Error('First name must be 1-100 characters and contain only letters, spaces, and hyphens');
     }
     return true;
   }),
   body('lastName').custom((value) => {
     if (!isValidName(value)) {
-      throw new Error('Last name must be 2-100 characters and contain only letters, spaces, and hyphens');
+      throw new Error('Last name must be 1-100 characters and contain only letters, spaces, and hyphens');
     }
     return true;
   }),

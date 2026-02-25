@@ -180,6 +180,9 @@ export const applicationsAPI = {
   
   getMyApplications: () => api.get('/api/applications/my'),
   
+  updateApplicationStatus: (applicationId: number, status: string) => 
+    api.patch(`/api/applications/${applicationId}/status`, { status }),
+  
   getApplication: (id: number) => api.get(`/api/applications/${id}`),
   
   cancelApplication: (id: number) => api.post(`/api/applications/${id}/cancel`),

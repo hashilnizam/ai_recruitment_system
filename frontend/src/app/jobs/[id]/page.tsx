@@ -432,27 +432,38 @@ export default function JobDetailPage() {
                 </div>
               </div>
 
-              {/* Apply Button */}
-              {hasApplied ? (
-                <div className="bg-green-50 border border-green-200 rounded-xl p-6 text-center">
-                  <CheckCircleIcon size={48} className="text-green-600 mx-auto mb-3" />
-                  <h3 className="font-bold text-green-900 mb-2">Already Applied</h3>
-                  <p className="text-green-700 text-sm">You have already applied for this position.</p>
+              {/* Apply Button - Only for Candidates */}
+              {user?.role === 'candidate' && (
+                hasApplied ? (
+                  <div className="bg-green-50 border border-green-200 rounded-xl p-6 text-center">
+                    <CheckCircleIcon size={48} className="text-green-600 mx-auto mb-3" />
+                    <h3 className="font-bold text-green-900 mb-2">Already Applied</h3>
+                    <p className="text-green-700 text-sm">You have already applied for this position.</p>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => setShowApplicationForm(!showApplicationForm)}
+                    className="w-full bg-gradient-to-r from-blue-500 to-blue-600 text-white px-6 py-4 rounded-xl font-bold hover:from-blue-600 hover:to-blue-700 transition-all duration-200 shadow-lg"
+                  >
+                    Apply for This Position
+                  </button>
+                )
+              )}
+
+              {/* Recruiter View - No Apply Button */}
+              {user?.role === 'recruiter' && (
+                <div className="bg-gray-50 border border-gray-200 rounded-xl p-6 text-center">
+                  <BriefcaseIcon size={48} className="text-gray-600 mx-auto mb-3" />
+                  <h3 className="font-bold text-gray-900 mb-2">Recruiter View</h3>
+                  <p className="text-gray-700 text-sm">This is your job posting. Candidates can apply from their dashboard.</p>
                 </div>
-              ) : (
-                <button
-                  onClick={() => setShowApplicationForm(!showApplicationForm)}
-                  className="w-full bg-gradient-to-r from-blue-500 to-blue-600 text-white px-6 py-4 rounded-xl font-bold hover:from-blue-600 hover:to-blue-700 transition-all duration-200 shadow-lg"
-                >
-                  Apply for This Position
-                </button>
               )}
             </div>
           </div>
         </div>
 
-        {/* Application Form */}
-        {showApplicationForm && !hasApplied && (
+        {/* Application Form - Only for Candidates */}
+        {showApplicationForm && !hasApplied && user?.role === 'candidate' && (
           <div className="bg-white rounded-xl p-8 shadow-sm">
             <h2 className="text-2xl font-bold text-gray-900 mb-6">Apply for {job.title}</h2>
             
