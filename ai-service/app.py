@@ -237,6 +237,39 @@ def process_ranking(job_id):
                 # Get candidate details
                 candidate_data = get_candidate_data(application['id'])
                 
+                # Handle resume uploads differently
+                if candidate_data.get('is_resume_upload'):
+                    print(f"📄 Processing resume upload: {candidate_data['resume_name']}")
+                    
+                    # Parse resume using AI
+                    try:
+                        import PyPDF2
+                        import io
+                        
+                        # Read PDF file
+                        with open(candidate_data['resume_file'], 'rb') as file:
+                            pdf_reader = PyPDF2.PdfReader(file)
+                            resume_text = ""
+                            for page in pdf_reader.pages:
+                                resume_text += page.extract_text()
+                        
+                        # Use AI to extract structured data
+                        extracted_data = ai_service.extract_resume_data(resume_text)
+                        
+                        # Update candidate data with extracted information
+                        candidate_data['skills'] = extracted_data.get('skills', [])
+                        candidate_data['education'] = extracted_data.get('education', [])
+                        candidate_data['experience'] = extracted_data.get('experience', [])
+                        
+                        print(f"✅ Resume parsed successfully for {candidate_data['resume_name']}")
+                        
+                    except Exception as parse_error:
+                        print(f"❌ Error parsing resume {candidate_data['resume_name']}: {parse_error}")
+                        # Use default values if parsing fails
+                        candidate_data['skills'] = []
+                        candidate_data['education'] = []
+                        candidate_data['experience'] = []
+                
                 # Calculate scores
                 skill_score = ai_service.calculate_skill_match(
                     candidate_data['skills'], 
@@ -378,6 +411,26 @@ def process_ranking(job_id):
 
 def get_candidate_data(application_id):
     """Get complete candidate data for an application"""
+    # Check if this is a recruiter resume upload
+    resume_query = """
+    SELECT rr.filename, rr.original_name, rr.file_path, rr.file_size
+    FROM recruiter_resumes rr
+    WHERE rr.id = %s
+    """
+    resume_result = db.execute_query(resume_query, (application_id,))
+    
+    if resume_result:
+        # This is a recruiter resume upload
+        resume = resume_result[0]
+        return {
+            'skills': [],
+            'education': [],
+            'experience': [],
+            'resume_file': resume['file_path'],
+            'resume_name': resume['original_name'],
+            'is_resume_upload': True
+        }
+    
     # Get skills
     skills_query = """
     SELECT skill_name, proficiency_level, years_of_experience
@@ -402,7 +455,8 @@ def get_candidate_data(application_id):
     return {
         'skills': skills,
         'education': education,
-        'experience': experience
+        'experience': experience,
+        'is_resume_upload': False
     }
 
 if __name__ == '__main__':

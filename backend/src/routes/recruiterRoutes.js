@@ -4,6 +4,7 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
+const axios = require('axios');
 const { authenticateToken, authorizeRole } = require('../middleware/auth');
 const { asyncHandler } = require('../middleware/errorHandler');
 const db = require('../config/database');
@@ -81,13 +82,20 @@ router.get('/resumes', authenticateToken, authorizeRole('recruiter'), asyncHandl
   try {
     const recruiterId = req.user.id;
     
+    // Add cache-busting headers
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+    
     // Get uploaded resumes count
     const resumesResult = await db.query(
       'SELECT * FROM recruiter_resumes WHERE recruiter_id = ? ORDER BY uploaded_at DESC',
       [recruiterId]
     );
     
-    const resumes = resumesResult[0] || [];
+    const resumes = resumesResult || [];
+    
+    console.log(`📊 Retrieved ${resumes.length} resumes for recruiter ${recruiterId}`);
     
     res.json({
       success: true,
@@ -289,6 +297,51 @@ router.post('/resumes', authenticateToken, authorizeRole('recruiter'), upload.ar
       responseMessage += ` ${skippedFiles.length} file(s) were skipped due to errors.`;
     }
     
+    // Trigger AI ranking for uploaded resumes
+    if (uploadedResumes.length > 0) {
+      try {
+        console.log('🤖 Triggering AI ranking for uploaded resumes...');
+        
+        // Create a dummy job entry for ranking uploaded resumes
+        const dummyJobResult = await db.query(
+          'INSERT INTO jobs (recruiter_id, title, description, status, created_at) VALUES (?, ?, ?, ?, ?)',
+          [recruiterId, 'Direct Resume Upload', 'Uploaded resumes for ranking', 'published']
+        );
+        
+        const dummyJobId = dummyJobResult.insertId;
+        console.log(`📋 Created dummy job ${dummyJobId} for resume ranking`);
+        
+        // Create applications for uploaded resumes
+        for (const resume of uploadedResumes) {
+          await db.query(
+            'INSERT INTO applications (job_id, candidate_id, status, applied_at) VALUES (?, ?, ?, ?)',
+            [dummyJobId, resume.id, 'pending']
+          );
+        }
+        
+        console.log(`📝 Created ${uploadedResumes.length} applications for job ${dummyJobId}`);
+        
+        // Trigger AI ranking
+        try {
+          const aiResponse = await axios.post('http://localhost:5001/api/rank-candidates', {
+            job_id: dummyJobId
+          }, {
+            timeout: 30000,
+            headers: {
+              'Content-Type': 'application/json'
+            }
+          });
+          
+          console.log('✅ AI ranking triggered successfully:', aiResponse.data);
+        } catch (aiError) {
+          console.error('❌ Failed to trigger AI ranking:', aiError.message);
+        }
+        
+      } catch (rankingError) {
+        console.error('❌ Error setting up AI ranking:', rankingError);
+      }
+    }
+
     res.status(201).json({
       success: true,
       message: responseMessage,

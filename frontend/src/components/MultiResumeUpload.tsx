@@ -120,7 +120,7 @@ export default function MultiResumeUpload({ onUploadComplete, maxFiles = 25 }: M
       
       if (response.success) {
         // Show detailed upload results
-        const { uploaded_files, duplicate_files, skipped_files, duplicates } = response;
+        const { uploaded_files, duplicate_files, skipped_files, duplicates } = response.data || response;
         
         if (duplicate_files > 0) {
           toast.success(`${uploaded_files} resume(s) uploaded. ${duplicate_files} duplicate(s) skipped.`, {
