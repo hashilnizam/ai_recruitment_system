@@ -157,22 +157,49 @@ router.get('/job/:jobId', authenticateToken, authorizeRole('recruiter'), asyncHa
         f.strengths,
         f.missing_skills,
         f.suggestions,
-        f.overall_assessment
+        f.overall_assessment,
+        false as is_resume_upload
       FROM applications a
       JOIN users u ON a.candidate_id = u.id
       LEFT JOIN rankings r ON a.id = r.application_id
       LEFT JOIN feedback f ON a.id = f.application_id
       WHERE a.job_id = ?
-      ORDER BY r.total_score DESC, a.applied_at DESC
+      
+      UNION ALL
+      
+      SELECT 
+        rr.id as application_id,
+        rr.id as candidate_id,
+        rr.original_name as first_name,
+        '' as last_name,
+        'resume-upload@system.com' as email,
+        r.total_score,
+        r.rank_position,
+        r.skill_score,
+        r.education_score,
+        r.experience_score,
+        r.score_breakdown,
+        'pending' as application_status,
+        rr.uploaded_at as applied_at,
+        f.strengths,
+        f.missing_skills,
+        f.suggestions,
+        f.overall_assessment,
+        true as is_resume_upload
+      FROM recruiter_resumes rr
+      LEFT JOIN rankings r ON rr.id = r.candidate_id AND r.job_id = ?
+      LEFT JOIN feedback f ON rr.id = f.candidate_id AND f.job_id = ?
+      WHERE rr.recruiter_id = ?
+      
+      ORDER BY total_score DESC, applied_at DESC
     `;
 
-    const rankings = await db.query(rankingsQuery, [jobId]);
+    const rankings = await db.query(rankingsQuery, [jobId, jobId, jobId, recruiterId]);
 
     console.log(`✅ Retrieved ${rankings.length} rankings for job ${jobId}`);
 
     res.json({
       success: true,
-      message: 'Rankings retrieved successfully',
       data: rankings,
       count: rankings.length
     });
@@ -181,7 +208,7 @@ router.get('/job/:jobId', authenticateToken, authorizeRole('recruiter'), asyncHa
     console.error('Error getting rankings:', error);
     res.status(500).json({
       success: false,
-      message: 'Failed to get rankings'
+      message: 'Failed to get rankings: ' + error.message
     });
   }
 }));

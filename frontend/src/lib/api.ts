@@ -217,6 +217,11 @@ export const recruiterAPI = {
     const response = await api.delete(`/api/recruiter/resumes/${id}`);
     return response; // Return the full response since api.delete() already unwraps
   },
+  
+  triggerRanking: async () => {
+    const response = await api.post('/api/recruiter/trigger-ranking');
+    return response; // Return the full response
+  },
 };
 
 // AI Service API (direct to AI service)

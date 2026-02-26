@@ -424,4 +424,125 @@ router.delete('/resumes/:id', authenticateToken, authorizeRole('recruiter'), asy
   }
 }));
 
+// Trigger AI ranking for uploaded resumes
+router.post('/trigger-ranking', authenticateToken, authorizeRole('recruiter'), asyncHandler(async (req, res) => {
+  try {
+    const recruiterId = req.user.id;
+    
+    console.log(`🚀 Triggering AI ranking for recruiter ${recruiterId}`);
+    
+    // Get the most recent job created for ranking
+    const recentJob = await db.query(
+      'SELECT * FROM jobs WHERE recruiter_id = ? ORDER BY created_at DESC LIMIT 1',
+      [recruiterId]
+    );
+    
+    if (!recentJob || recentJob.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'No jobs found for ranking'
+      });
+    }
+    
+    const jobId = recentJob[0].id;
+    console.log(`📋 Using job ${jobId}: ${recentJob[0].title}`);
+    
+    // Check if there are pending applications
+    const pendingApplications = await db.query(
+      'SELECT COUNT(*) as count FROM applications WHERE job_id = ? AND status = ?',
+      [jobId, 'pending']
+    );
+    
+    if (pendingApplications[0].count === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'No pending applications to rank'
+      });
+    }
+    
+    // Trigger AI ranking
+    try {
+      const axios = require('axios');
+      const aiResponse = await axios.post('http://localhost:5001/api/rank-candidates', {
+        job_id: jobId
+      }, {
+        timeout: 10000,
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      console.log('✅ AI ranking triggered successfully:', aiResponse.data);
+      
+      res.json({
+        success: true,
+        message: 'AI ranking process started',
+        job_id: jobId,
+        applications_to_rank: pendingApplications[0].count
+      });
+      
+    } catch (aiError) {
+      console.error('❌ Failed to trigger AI ranking:', aiError.message);
+      res.status(500).json({
+        success: false,
+        message: 'Failed to trigger AI ranking: ' + aiError.message
+      });
+    }
+    
+  } catch (error) {
+    console.error('Error triggering ranking:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to trigger ranking: ' + error.message
+    });
+  }
+}));
+
+// Download resume file
+router.get('/resumes/download/:id', authenticateToken, authorizeRole('recruiter'), asyncHandler(async (req, res) => {
+  try {
+    const recruiterId = req.user.id;
+    const resumeId = req.params.id;
+    
+    // Get resume info
+    const resume = await db.query(
+      'SELECT * FROM recruiter_resumes WHERE id = ? AND recruiter_id = ?',
+      [resumeId, recruiterId]
+    );
+    
+    if (!resume || resume.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Resume not found'
+      });
+    }
+    
+    const resumeInfo = resume[0];
+    
+    // Check if file exists
+    const fs = require('fs');
+    if (!fs.existsSync(resumeInfo.file_path)) {
+      return res.status(404).json({
+        success: false,
+        message: 'Resume file not found'
+      });
+    }
+    
+    // Send file
+    res.sendFile(resumeInfo.file_path, {
+      headers: {
+        'Content-Type': 'application/pdf',
+        'Content-Disposition': `inline; filename="${resumeInfo.original_name}"`
+      }
+    });
+    
+  } catch (error) {
+    console.error('Error downloading resume:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to download resume'
+    });
+  }
+}));
+
 module.exports = router;

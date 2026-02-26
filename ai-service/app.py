@@ -127,10 +127,14 @@ def rank_candidates():
                 'message': 'Ranking is already in progress for this job'
             }), 400
         
-        # Start processing in background
-        thread = threading.Thread(target=process_ranking, args=(job_id,))
-        thread.daemon = True
-        thread.start()
+        # Start processing in background (for testing, run synchronously)
+        print(f"🧵 Starting ranking process for job {job_id}")
+        process_ranking(job_id)
+        # thread = threading.Thread(target=process_ranking, args=(job_id,))
+        # thread.daemon = True
+        # thread.start()
+        
+        print(f"🧵 Background thread started for job {job_id}")
         
         return jsonify({
             'success': True,
@@ -178,7 +182,11 @@ def get_ranking_status(job_id):
 
 def process_ranking(job_id):
     """Process ranking for all candidates of a job"""
+    from datetime import datetime
+    
     try:
+        print(f"🚀 Starting ranking process for job {job_id}")
+        
         # Update processing status to processing
         processing_status[job_id] = {
             'status': 'processing',
@@ -187,15 +195,22 @@ def process_ranking(job_id):
             'started_at': datetime.now()
         }
         
+        print(f"📊 Inserting initial processing record for job {job_id}")
+        
         # Update database
-        db.execute_query("""
-            INSERT INTO processing_jobs (job_id, status, started_at)
-            VALUES (%s, 'processing', %s)
-            ON DUPLICATE KEY UPDATE 
-            status = 'processing', 
-            started_at = %s,
-            progress = 0
-        """, (job_id, datetime.now(), datetime.now()))
+        try:
+            db.execute_query("""
+                INSERT INTO processing_jobs (job_id, status, started_at)
+                VALUES (%s, 'processing', %s)
+                ON DUPLICATE KEY UPDATE 
+                status = 'processing', 
+                started_at = %s,
+                progress = 0
+            """, (job_id, datetime.now(), datetime.now()))
+            print(f"✅ Processing record created for job {job_id}")
+        except Exception as db_error:
+            print(f"❌ Database error creating processing record: {db_error}")
+            raise db_error
         
         # Get job details
         job_query = """
@@ -214,12 +229,18 @@ def process_ranking(job_id):
         
         # Get all applications for this job
         apps_query = """
-        SELECT a.id, a.candidate_id, u.first_name, u.last_name, u.email
+        SELECT a.id, a.candidate_id, CAST(u.first_name AS CHAR) as first_name, CAST(u.last_name AS CHAR) as last_name, CAST(u.email AS CHAR) as email, false as is_resume_upload
         FROM applications a
         JOIN users u ON a.candidate_id = u.id
         WHERE a.job_id = %s AND a.status = 'pending'
+        
+        UNION ALL
+        
+        SELECT rr.id, rr.id, CAST(rr.original_name AS CHAR) as first_name, '' as last_name, 'resume-upload@system.com' as email, true as is_resume_upload
+        FROM recruiter_resumes rr
+        WHERE rr.recruiter_id = (SELECT recruiter_id FROM jobs WHERE id = %s)
         """
-        applications = db.execute_query(apps_query, (job_id,))
+        applications = db.execute_query(apps_query, (job_id, job_id))
         
         total_candidates = len(applications)
         
@@ -235,7 +256,7 @@ def process_ranking(job_id):
         for i, application in enumerate(applications):
             try:
                 # Get candidate details
-                candidate_data = get_candidate_data(application['id'])
+                candidate_data = get_candidate_data(application['id'], application.get('is_resume_upload', False))
                 
                 # Handle resume uploads differently
                 if candidate_data.get('is_resume_upload'):
@@ -256,12 +277,71 @@ def process_ranking(job_id):
                         # Use AI to extract structured data
                         extracted_data = ai_service.extract_resume_data(resume_text)
                         
-                        # Update candidate data with extracted information
-                        candidate_data['skills'] = extracted_data.get('skills', [])
-                        candidate_data['education'] = extracted_data.get('education', [])
-                        candidate_data['experience'] = extracted_data.get('experience', [])
+                        # Map the extracted data to the expected format
+                        skills = extracted_data.get('skills', [])
+                        education = extracted_data.get('education', [])
+                        experience = extracted_data.get('experience', [])
                         
-                        print(f"✅ Resume parsed successfully for {candidate_data['resume_name']}")
+                        # Convert skills format: name -> skill_name
+                        mapped_skills = []
+                        for skill in skills:
+                            mapped_skills.append({
+                                'skill_name': skill.get('name', ''),
+                                'proficiency_level': skill.get('level', 'intermediate'),
+                                'years_of_experience': skill.get('experience_years', 0)
+                            })
+                        
+                        # Convert education format: field -> field_of_study, end_date -> graduation_year
+                        mapped_education = []
+                        for edu in education:
+                            mapped_education.append({
+                                'degree': edu.get('degree', ''),
+                                'field_of_study': edu.get('field', ''),
+                                'institution': edu.get('institution', ''),
+                                'graduation_year': int(edu.get('end_date', '2023')) if edu.get('end_date') else None,
+                                'gpa': edu.get('gpa')
+                            })
+                        
+                        # Convert experience format: start_date, end_date to duration_months
+                        mapped_experience = []
+                        for exp in experience:
+                            start_date = exp.get('start_date', '')
+                            end_date = exp.get('end_date', 'Present')
+                            
+                            # Calculate duration in months (simplified)
+                            duration_months = 12  # Default to 1 year
+                            if start_date:
+                                try:
+                                    start_year = int(start_date.split('-')[0])
+                                    if end_date != 'Present':
+                                        end_year = int(end_date.split('-')[0])
+                                        duration_months = (end_year - start_year) * 12
+                                    else:
+                                        from datetime import datetime
+                                        current_year = datetime.now().year
+                                        duration_months = (current_year - start_year) * 12
+                                except:
+                                    duration_months = 12
+                            
+                            mapped_experience.append({
+                                'job_title': exp.get('title', ''),
+                                'company': exp.get('company', ''),
+                                'duration_months': duration_months,
+                                'start_date': exp.get('start_date'),
+                                'end_date': exp.get('end_date'),
+                                'is_current': exp.get('end_date') == 'Present',
+                                'description': exp.get('description', '')
+                            })
+                        
+                        # Update candidate data with mapped information
+                        candidate_data['skills'] = mapped_skills
+                        candidate_data['education'] = mapped_education
+                        candidate_data['experience'] = mapped_experience
+                        
+                        print(f"✅ Resume parsed and mapped successfully for {candidate_data['resume_name']}")
+                        print(f"   🎯 Mapped {len(mapped_skills)} skills")
+                        print(f"   🎓 Mapped {len(mapped_education)} education entries")
+                        print(f"   💼 Mapped {len(mapped_experience)} experience entries")
                         
                     except Exception as parse_error:
                         print(f"❌ Error parsing resume {candidate_data['resume_name']}: {parse_error}")
@@ -300,46 +380,94 @@ def process_ranking(job_id):
                 feedback = ai_service.generate_feedback(candidate_data, job_data, scores)
                 
                 # Store ranking
-                ranking_query = """
-                INSERT INTO rankings 
-                (job_id, application_id, skill_score, education_score, experience_score, total_score, rank_position, score_breakdown)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-                ON DUPLICATE KEY UPDATE
-                skill_score = VALUES(skill_score),
-                education_score = VALUES(education_score),
-                experience_score = VALUES(experience_score),
-                total_score = VALUES(total_score),
-                score_breakdown = VALUES(score_breakdown)
-                """
-                db.execute_query(ranking_query, (
-                    job_id, 
-                    application['id'], 
-                    skill_score, 
-                    education_score, 
-                    experience_score, 
-                    total_score, 
-                    0,  # Will be updated after sorting
-                    json.dumps(scores)
-                ))
+                if application.get('is_resume_upload'):
+                    # For recruiter resumes
+                    ranking_query = """
+                    INSERT INTO rankings 
+                    (job_id, candidate_id, skill_score, education_score, experience_score, total_score, rank_position, score_breakdown, is_resume_upload)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    ON DUPLICATE KEY UPDATE
+                    skill_score = VALUES(skill_score),
+                    education_score = VALUES(education_score),
+                    experience_score = VALUES(experience_score),
+                    total_score = VALUES(total_score),
+                    score_breakdown = VALUES(score_breakdown)
+                    """
+                    db.execute_query(ranking_query, (
+                        job_id, 
+                        application['id'], 
+                        skill_score, 
+                        education_score, 
+                        experience_score, 
+                        total_score, 
+                        0,  # Will be updated after sorting
+                        json.dumps(scores),
+                        True
+                    ))
+                else:
+                    # For regular applications
+                    ranking_query = """
+                    INSERT INTO rankings 
+                    (job_id, application_id, skill_score, education_score, experience_score, total_score, rank_position, score_breakdown, is_resume_upload)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    ON DUPLICATE KEY UPDATE
+                    skill_score = VALUES(skill_score),
+                    education_score = VALUES(education_score),
+                    experience_score = VALUES(experience_score),
+                    total_score = VALUES(total_score),
+                    score_breakdown = VALUES(score_breakdown)
+                    """
+                    db.execute_query(ranking_query, (
+                        job_id, 
+                        application['id'], 
+                        skill_score, 
+                        education_score, 
+                        experience_score, 
+                        total_score, 
+                        0,  # Will be updated after sorting
+                        json.dumps(scores),
+                        False
+                    ))
                 
                 # Store feedback
-                feedback_query = """
-                INSERT INTO feedback 
-                (application_id, strengths, missing_skills, suggestions, overall_assessment)
-                VALUES (%s, %s, %s, %s, %s)
-                ON DUPLICATE KEY UPDATE
-                strengths = VALUES(strengths),
-                missing_skills = VALUES(missing_skills),
-                suggestions = VALUES(suggestions),
-                overall_assessment = VALUES(overall_assessment)
-                """
-                db.execute_query(feedback_query, (
-                    application['id'],
-                    feedback['strengths'],
-                    feedback['missing_skills'],
-                    feedback['suggestions'],
-                    feedback['overall_assessment']
-                ))
+                if application.get('is_resume_upload'):
+                    # For recruiter resumes, use candidate_id
+                    feedback_query = """
+                    INSERT INTO feedback 
+                    (candidate_id, strengths, missing_skills, suggestions, overall_assessment)
+                    VALUES (%s, %s, %s, %s, %s)
+                    ON DUPLICATE KEY UPDATE
+                    strengths = VALUES(strengths),
+                    missing_skills = VALUES(missing_skills),
+                    suggestions = VALUES(suggestions),
+                    overall_assessment = VALUES(overall_assessment)
+                    """
+                    db.execute_query(feedback_query, (
+                        application['id'],
+                        feedback['strengths'],
+                        feedback['missing_skills'],
+                        feedback['suggestions'],
+                        feedback['overall_assessment']
+                    ))
+                else:
+                    # For regular applications
+                    feedback_query = """
+                    INSERT INTO feedback 
+                    (application_id, strengths, missing_skills, suggestions, overall_assessment)
+                    VALUES (%s, %s, %s, %s, %s)
+                    ON DUPLICATE KEY UPDATE
+                    strengths = VALUES(strengths),
+                    missing_skills = VALUES(missing_skills),
+                    suggestions = VALUES(suggestions),
+                    overall_assessment = VALUES(overall_assessment)
+                    """
+                    db.execute_query(feedback_query, (
+                        application['id'],
+                        feedback['strengths'],
+                        feedback['missing_skills'],
+                        feedback['suggestions'],
+                        feedback['overall_assessment']
+                    ))
                 
                 rankings.append({
                     'application_id': application['id'],
@@ -364,11 +492,22 @@ def process_ranking(job_id):
         # Update rankings with positions
         rankings.sort(key=lambda x: x['total_score'], reverse=True)
         for position, ranking in enumerate(rankings, 1):
-            db.execute_query("""
-                UPDATE rankings 
-                SET rank_position = %s 
-                WHERE job_id = %s AND application_id = %s
-            """, (position, job_id, ranking['application_id']))
+            # Check if this is a resume upload or regular application
+            application = next((app for app in applications if app['id'] == ranking['application_id']), None)
+            if application and application.get('is_resume_upload'):
+                # Update recruiter resume ranking
+                db.execute_query("""
+                    UPDATE rankings 
+                    SET rank_position = %s 
+                    WHERE job_id = %s AND candidate_id = %s AND is_resume_upload = TRUE
+                """, (position, job_id, ranking['application_id']))
+            else:
+                # Update regular application ranking
+                db.execute_query("""
+                    UPDATE rankings 
+                    SET rank_position = %s 
+                    WHERE job_id = %s AND application_id = %s AND is_resume_upload = FALSE
+                """, (position, job_id, ranking['application_id']))
         
         # Update application statuses
         db.execute_query("""
@@ -409,19 +548,23 @@ def process_ranking(job_id):
             'completed_at': datetime.now()
         }
 
-def get_candidate_data(application_id):
+def get_candidate_data(application_id, is_resume_upload=False):
     """Get complete candidate data for an application"""
-    # Check if this is a recruiter resume upload
-    resume_query = """
-    SELECT rr.filename, rr.original_name, rr.file_path, rr.file_size
-    FROM recruiter_resumes rr
-    WHERE rr.id = %s
-    """
-    resume_result = db.execute_query(resume_query, (application_id,))
     
-    if resume_result:
+    if is_resume_upload:
         # This is a recruiter resume upload
+        resume_query = """
+        SELECT rr.filename, rr.original_name, rr.file_path, rr.file_size
+        FROM recruiter_resumes rr
+        WHERE rr.id = %s
+        """
+        resume_result = db.execute_query(resume_query, (application_id,))
+        
+        if not resume_result:
+            raise Exception(f"Resume {application_id} not found")
+        
         resume = resume_result[0]
+        print(f"📄 Processing resume upload: {resume['original_name']}")
         return {
             'skills': [],
             'education': [],
@@ -431,7 +574,22 @@ def get_candidate_data(application_id):
             'is_resume_upload': True
         }
     
-    # Get skills
+    # Regular application processing
+    app_query = """
+    SELECT a.candidate_id, u.first_name, u.last_name, u.email
+    FROM applications a
+    JOIN users u ON a.candidate_id = u.id
+    WHERE a.id = %s
+    """
+    app_result = db.execute_query(app_query, (application_id,))
+    
+    if not app_result:
+        raise Exception(f"Application {application_id} not found")
+    
+    candidate_info = app_result[0]
+    candidate_id = candidate_info['candidate_id']
+    
+    # Get skills for regular applications
     skills_query = """
     SELECT skill_name, proficiency_level, years_of_experience
     FROM skills WHERE application_id = %s
@@ -451,6 +609,8 @@ def get_candidate_data(application_id):
     FROM experience WHERE application_id = %s
     """
     experience = db.execute_query(experience_query, (application_id,))
+    
+    print(f"📊 Found regular application for {candidate_info['first_name']} {candidate_info['last_name']}: {len(skills)} skills, {len(education)} education, {len(experience)} experience")
     
     return {
         'skills': skills,

@@ -18,7 +18,7 @@ class AIService:
     def generate_embedding(self, text):
         """Generate embedding for given text using OpenAI"""
         try:
-            response = openai.Embedding.create(
+            response = self.client.embeddings.create(
                 model="text-embedding-ada-002",
                 input=text
             )
@@ -163,7 +163,7 @@ class AIService:
             Be encouraging but realistic. Focus on specific, actionable advice.
             """
             
-            response = openai.ChatCompletion.create(
+            response = self.client.chat.completions.create(
                 model=self.model,
                 messages=[
                     {"role": "system", "content": "You are an expert career counselor providing constructive feedback."},
