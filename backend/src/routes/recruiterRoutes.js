@@ -304,8 +304,8 @@ router.post('/resumes', authenticateToken, authorizeRole('recruiter'), upload.ar
         
         // Create a dummy job entry for ranking uploaded resumes
         const dummyJobResult = await db.query(
-          'INSERT INTO jobs (recruiter_id, title, description, status, created_at) VALUES (?, ?, ?, ?, ?)',
-          [recruiterId, 'Direct Resume Upload', 'Uploaded resumes for ranking', 'published']
+          'INSERT INTO jobs (recruiter_id, title, description, required_skills, required_education, required_experience, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+          [recruiterId, 'Direct Resume Upload', 'Uploaded resumes for ranking', '[]', '[]', '{}', 'published', new Date()]
         );
         
         const dummyJobId = dummyJobResult.insertId;
@@ -313,9 +313,28 @@ router.post('/resumes', authenticateToken, authorizeRole('recruiter'), upload.ar
         
         // Create applications for uploaded resumes
         for (const resume of uploadedResumes) {
+          // Create a dummy user record for the resume
+          const dummyEmail = `resume-${resume.id}@upload.local`;
+          const userCheck = await db.query('SELECT id FROM users WHERE email = ?', [dummyEmail]);
+          
+          let candidateId;
+          if (userCheck.length === 0) {
+            // Create dummy user
+            const userResult = await db.query(
+              'INSERT INTO users (email, password_hash, first_name, last_name, role, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+              [dummyEmail, 'dummy_hash', resume.original_name.replace('.pdf', '').replace('.doc', '').replace('.docx', ''), '', 'candidate', new Date()]
+            );
+            candidateId = userResult.insertId;
+            console.log(`👤 Created dummy user ${candidateId} for resume ${resume.id}`);
+          } else {
+            candidateId = userCheck[0].id;
+            console.log(`👤 Using existing dummy user ${candidateId} for resume ${resume.id}`);
+          }
+          
+          // Create application with the dummy user ID
           await db.query(
             'INSERT INTO applications (job_id, candidate_id, status, applied_at) VALUES (?, ?, ?, ?)',
-            [dummyJobId, resume.id, 'pending']
+            [dummyJobId, candidateId, 'pending']
           );
         }
         
@@ -431,34 +450,31 @@ router.post('/trigger-ranking', authenticateToken, authorizeRole('recruiter'), a
     
     console.log(`🚀 Triggering AI ranking for recruiter ${recruiterId}`);
     
-    // Get the most recent job created for ranking
-    const recentJob = await db.query(
-      'SELECT * FROM jobs WHERE recruiter_id = ? ORDER BY created_at DESC LIMIT 1',
+    // Get the most recent job that has pending applications
+    const jobWithPendingApps = await db.query(
+      `SELECT j.* FROM jobs j 
+       INNER JOIN applications a ON j.id = a.job_id 
+       WHERE j.recruiter_id = ? AND a.status = 'pending'
+       ORDER BY j.created_at DESC 
+       LIMIT 1`,
       [recruiterId]
     );
     
-    if (!recentJob || recentJob.length === 0) {
-      return res.status(404).json({
-        success: false,
-        message: 'No jobs found for ranking'
-      });
-    }
-    
-    const jobId = recentJob[0].id;
-    console.log(`📋 Using job ${jobId}: ${recentJob[0].title}`);
-    
-    // Check if there are pending applications
-    const pendingApplications = await db.query(
-      'SELECT COUNT(*) as count FROM applications WHERE job_id = ? AND status = ?',
-      [jobId, 'pending']
-    );
-    
-    if (pendingApplications[0].count === 0) {
+    if (!jobWithPendingApps || jobWithPendingApps.length === 0) {
       return res.status(400).json({
         success: false,
         message: 'No pending applications to rank'
       });
     }
+    
+    const jobId = jobWithPendingApps[0].id;
+    console.log(`📋 Using job ${jobId}: ${jobWithPendingApps[0].title}`);
+    
+    // Count pending applications for this job
+    const pendingApplications = await db.query(
+      'SELECT COUNT(*) as count FROM applications WHERE job_id = ? AND status = ?',
+      [jobId, 'pending']
+    );
     
     // Trigger AI ranking
     try {
@@ -494,6 +510,115 @@ router.post('/trigger-ranking', authenticateToken, authorizeRole('recruiter'), a
     res.status(500).json({
       success: false,
       message: 'Failed to trigger ranking: ' + error.message
+    });
+  }
+}));
+
+// Get resume upload details
+router.get('/resumes/:id/details', authenticateToken, authorizeRole('recruiter'), asyncHandler(async (req, res) => {
+  try {
+    const recruiterId = req.user.id;
+    const resumeId = req.params.id;
+    
+    console.log('🔍 Resume details request:', { resumeId, recruiterId });
+    
+    // Get resume info
+    const resume = await db.query(
+      'SELECT * FROM recruiter_resumes WHERE id = ? AND recruiter_id = ?',
+      [resumeId, recruiterId]
+    );
+    
+    console.log('📄 Resume query result:', resume.length, 'records');
+    
+    if (!resume || resume.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Resume not found'
+      });
+    }
+    
+    const resumeInfo = resume[0];
+    
+    // Get ranking information
+    const ranking = await db.query(
+      'SELECT * FROM rankings WHERE candidate_id = ? ORDER BY ranked_at DESC LIMIT 1',
+      [resumeId]
+    );
+    
+    console.log('🏆 Ranking query result:', ranking.length, 'records');
+    
+    // Get feedback information
+    const feedback = await db.query(
+      'SELECT * FROM feedback WHERE candidate_id = ? ORDER BY generated_at DESC LIMIT 1',
+      [resumeId]
+    );
+    
+    console.log('💬 Feedback query result:', feedback.length, 'records');
+    
+    // Construct candidate-like response
+    const candidateData = {
+      id: resumeInfo.id,
+      first_name: resumeInfo.original_name.replace('.pdf', ''),
+      last_name: '',
+      email: 'resume-upload@system.com',
+      role: 'candidate',
+      phone: '',
+      company_name: '',
+      isResumeUpload: true,
+      uploaded_at: resumeInfo.uploaded_at,
+      file_size: resumeInfo.file_size,
+      filename: resumeInfo.filename,
+      original_name: resumeInfo.original_name,
+      
+      // Add ranking data if available
+      ...(ranking.length > 0 && {
+        total_score: ranking[0].total_score,
+        rank_position: ranking[0].rank_position,
+        skill_score: ranking[0].skill_score,
+        education_score: ranking[0].education_score,
+        experience_score: ranking[0].experience_score,
+        score_breakdown: ranking[0].score_breakdown,
+        ranked_at: ranking[0].ranked_at
+      }),
+      
+      // Add feedback data if available
+      ...(feedback.length > 0 && {
+        strengths: feedback[0].strengths,
+        missing_skills: feedback[0].missing_skills,
+        suggestions: feedback[0].suggestions,
+        overall_assessment: feedback[0].overall_assessment,
+        feedback_created_at: feedback[0].created_at
+      }),
+      
+      // Empty arrays for compatibility
+      applications: [],
+      skills: [],
+      education: [],
+      experience: [],
+      stats: {
+        totalApplications: 0,
+        pendingApplications: 0,
+        rankedApplications: ranking.length > 0 ? 1 : 0,
+        shortlistedApplications: 0,
+        averageScore: ranking.length > 0 ? ranking[0].total_score : 0,
+        highestRank: ranking.length > 0 ? ranking[0].rank_position : null,
+        totalSkills: 0,
+        uniqueSkills: 0
+      },
+      statusBreakdown: {},
+      skillProficiency: {}
+    };
+    
+    res.json({
+      success: true,
+      data: candidateData
+    });
+    
+  } catch (error) {
+    console.error('Error fetching resume details:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch resume details'
     });
   }
 }));

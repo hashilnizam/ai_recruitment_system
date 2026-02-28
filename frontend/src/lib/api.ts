@@ -222,6 +222,11 @@ export const recruiterAPI = {
     const response = await api.post('/api/recruiter/trigger-ranking');
     return response; // Return the full response
   },
+  
+  getResumeDetails: async (id: string) => {
+    const response = await api.get(`/api/recruiter/resumes/${id}/details`);
+    return response;
+  },
 };
 
 // AI Service API (direct to AI service)

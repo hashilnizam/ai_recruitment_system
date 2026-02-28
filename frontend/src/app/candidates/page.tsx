@@ -342,7 +342,7 @@ export default function CandidatesPage() {
             <button
               onClick={(e) => {
                 e.stopPropagation();
-                window.open(`/api/resumes/download/${row.id}`, '_blank');
+                window.open(`/api/recruiter/resumes/download/${row.id}`, '_blank');
               }}
               className="flex items-center px-3 py-1 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-colors text-sm"
             >
@@ -353,7 +353,11 @@ export default function CandidatesPage() {
           <button
             onClick={(e) => {
               e.stopPropagation();
-              router.push(`/candidates/${row.candidate_id}`);
+              if (row.isResumeUpload) {
+                router.push(`/recruiter/resumes/${row.candidate_id}/details`);
+              } else {
+                router.push(`/candidates/${row.candidate_id}`);
+              }
             }}
             className="flex items-center px-3 py-1 bg-gray-50 text-gray-600 rounded-lg hover:bg-gray-100 transition-colors text-sm"
           >
@@ -490,7 +494,7 @@ export default function CandidatesPage() {
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
-                            window.open(`/api/resumes/download/${candidate.id}`, '_blank');
+                            window.open(`/api/recruiter/resumes/download/${candidate.id}`, '_blank');
                           }}
                           className="flex-1 flex items-center justify-center px-2 py-1 bg-blue-50 text-blue-600 rounded hover:bg-blue-100 transition-colors text-xs"
                         >
@@ -715,7 +719,7 @@ export default function CandidatesPage() {
               <div className="flex space-x-3 pt-4">
                 {selectedCandidate.isResumeUpload && (
                   <button
-                    onClick={() => window.open(`/api/resumes/download/${selectedCandidate.id}`, '_blank')}
+                    onClick={() => window.open(`/api/recruiter/resumes/download/${selectedCandidate.id}`, '_blank')}
                     className="flex-1 flex items-center justify-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
                   >
                     <EyeIcon className="w-4 h-4 mr-2" />

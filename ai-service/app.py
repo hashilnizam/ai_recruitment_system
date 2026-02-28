@@ -129,7 +129,14 @@ def rank_candidates():
         
         # Start processing in background (for testing, run synchronously)
         print(f"🧵 Starting ranking process for job {job_id}")
-        process_ranking(job_id)
+        try:
+            process_ranking(job_id)
+            print(f"✅ Ranking process completed for job {job_id}")
+        except Exception as e:
+            print(f"❌ Ranking process failed for job {job_id}: {e}")
+            import traceback
+            traceback.print_exc()
+        
         # thread = threading.Thread(target=process_ranking, args=(job_id,))
         # thread.daemon = True
         # thread.start()
@@ -229,18 +236,13 @@ def process_ranking(job_id):
         
         # Get all applications for this job
         apps_query = """
-        SELECT a.id, a.candidate_id, CAST(u.first_name AS CHAR) as first_name, CAST(u.last_name AS CHAR) as last_name, CAST(u.email AS CHAR) as email, false as is_resume_upload
+        SELECT a.id, a.candidate_id, CAST(u.first_name AS CHAR) as first_name, CAST(u.last_name AS CHAR) as last_name, CAST(u.email AS CHAR) as email, 
+               CASE WHEN u.email LIKE 'resume-%@upload.local' THEN true ELSE false END as is_resume_upload
         FROM applications a
         JOIN users u ON a.candidate_id = u.id
         WHERE a.job_id = %s AND a.status = 'pending'
-        
-        UNION ALL
-        
-        SELECT rr.id, rr.id, CAST(rr.original_name AS CHAR) as first_name, '' as last_name, 'resume-upload@system.com' as email, true as is_resume_upload
-        FROM recruiter_resumes rr
-        WHERE rr.recruiter_id = (SELECT recruiter_id FROM jobs WHERE id = %s)
         """
-        applications = db.execute_query(apps_query, (job_id, job_id))
+        applications = db.execute_query(apps_query, (job_id,))
         
         total_candidates = len(applications)
         
@@ -381,10 +383,10 @@ def process_ranking(job_id):
                 
                 # Store ranking
                 if application.get('is_resume_upload'):
-                    # For recruiter resumes
+                    # For recruiter resumes - use the actual application_id
                     ranking_query = """
                     INSERT INTO rankings 
-                    (job_id, candidate_id, skill_score, education_score, experience_score, total_score, rank_position, score_breakdown, is_resume_upload)
+                    (job_id, candidate_id, application_id, skill_score, education_score, experience_score, total_score, rank_position, score_breakdown)
                     VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                     ON DUPLICATE KEY UPDATE
                     skill_score = VALUES(skill_score),
@@ -395,20 +397,20 @@ def process_ranking(job_id):
                     """
                     db.execute_query(ranking_query, (
                         job_id, 
-                        application['id'], 
+                        application['candidate_id'], 
+                        application['id'],  # Use actual application_id
                         skill_score, 
                         education_score, 
                         experience_score, 
                         total_score, 
-                        0,  # Will be updated after sorting
-                        json.dumps(scores),
-                        True
+                        0,  # rank_position will be updated later
+                        json.dumps(scores)
                     ))
                 else:
                     # For regular applications
                     ranking_query = """
                     INSERT INTO rankings 
-                    (job_id, application_id, skill_score, education_score, experience_score, total_score, rank_position, score_breakdown, is_resume_upload)
+                    (job_id, application_id, candidate_id, skill_score, education_score, experience_score, total_score, rank_position, score_breakdown)
                     VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                     ON DUPLICATE KEY UPDATE
                     skill_score = VALUES(skill_score),
@@ -420,54 +422,34 @@ def process_ranking(job_id):
                     db.execute_query(ranking_query, (
                         job_id, 
                         application['id'], 
+                        application['candidate_id'], 
                         skill_score, 
                         education_score, 
                         experience_score, 
                         total_score, 
                         0,  # Will be updated after sorting
-                        json.dumps(scores),
-                        False
+                        json.dumps(scores)
                     ))
                 
                 # Store feedback
-                if application.get('is_resume_upload'):
-                    # For recruiter resumes, use candidate_id
-                    feedback_query = """
-                    INSERT INTO feedback 
-                    (candidate_id, strengths, missing_skills, suggestions, overall_assessment)
-                    VALUES (%s, %s, %s, %s, %s)
-                    ON DUPLICATE KEY UPDATE
-                    strengths = VALUES(strengths),
-                    missing_skills = VALUES(missing_skills),
-                    suggestions = VALUES(suggestions),
-                    overall_assessment = VALUES(overall_assessment)
-                    """
-                    db.execute_query(feedback_query, (
-                        application['id'],
-                        feedback['strengths'],
-                        feedback['missing_skills'],
-                        feedback['suggestions'],
-                        feedback['overall_assessment']
-                    ))
-                else:
-                    # For regular applications
-                    feedback_query = """
-                    INSERT INTO feedback 
-                    (application_id, strengths, missing_skills, suggestions, overall_assessment)
-                    VALUES (%s, %s, %s, %s, %s)
-                    ON DUPLICATE KEY UPDATE
-                    strengths = VALUES(strengths),
-                    missing_skills = VALUES(missing_skills),
-                    suggestions = VALUES(suggestions),
-                    overall_assessment = VALUES(overall_assessment)
-                    """
-                    db.execute_query(feedback_query, (
-                        application['id'],
-                        feedback['strengths'],
-                        feedback['missing_skills'],
-                        feedback['suggestions'],
-                        feedback['overall_assessment']
-                    ))
+                # For both resume uploads and regular applications, use application_id
+                feedback_query = """
+                INSERT INTO feedback 
+                (application_id, strengths, missing_skills, suggestions, overall_assessment)
+                VALUES (%s, %s, %s, %s, %s)
+                ON DUPLICATE KEY UPDATE
+                strengths = VALUES(strengths),
+                missing_skills = VALUES(missing_skills),
+                suggestions = VALUES(suggestions),
+                overall_assessment = VALUES(overall_assessment)
+                """
+                db.execute_query(feedback_query, (
+                    application['id'],
+                    feedback['strengths'],
+                    feedback['missing_skills'],
+                    feedback['suggestions'],
+                    feedback['overall_assessment']
+                ))
                 
                 rankings.append({
                     'application_id': application['id'],
@@ -492,22 +474,12 @@ def process_ranking(job_id):
         # Update rankings with positions
         rankings.sort(key=lambda x: x['total_score'], reverse=True)
         for position, ranking in enumerate(rankings, 1):
-            # Check if this is a resume upload or regular application
-            application = next((app for app in applications if app['id'] == ranking['application_id']), None)
-            if application and application.get('is_resume_upload'):
-                # Update recruiter resume ranking
-                db.execute_query("""
-                    UPDATE rankings 
-                    SET rank_position = %s 
-                    WHERE job_id = %s AND candidate_id = %s AND is_resume_upload = TRUE
-                """, (position, job_id, ranking['application_id']))
-            else:
-                # Update regular application ranking
-                db.execute_query("""
-                    UPDATE rankings 
-                    SET rank_position = %s 
-                    WHERE job_id = %s AND application_id = %s AND is_resume_upload = FALSE
-                """, (position, job_id, ranking['application_id']))
+            # Update ranking position using application_id
+            db.execute_query("""
+                UPDATE rankings 
+                SET rank_position = %s 
+                WHERE job_id = %s AND application_id = %s
+            """, (position, job_id, ranking['application_id']))
         
         # Update application statuses
         db.execute_query("""
