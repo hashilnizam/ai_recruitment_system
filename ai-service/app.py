@@ -114,6 +114,8 @@ def rank_candidates():
         data = request.get_json()
         job_id = data.get('job_id')
         
+        print(f"🔍 Received ranking request for job {job_id}")
+        
         if not job_id:
             return jsonify({
                 'success': False,
@@ -122,6 +124,7 @@ def rank_candidates():
         
         # Check if already processing
         if job_id in processing_status and processing_status[job_id]['status'] in ['queued', 'processing']:
+            print(f"⚠️ Ranking already in progress for job {job_id}")
             return jsonify({
                 'success': False,
                 'message': 'Ranking is already in progress for this job'
@@ -150,6 +153,7 @@ def rank_candidates():
         })
         
     except Exception as e:
+        print(f"❌ Error in rank_candidates: {e}")
         return jsonify({
             'success': False,
             'message': f'Failed to start ranking: {str(e)}'
@@ -244,7 +248,22 @@ def process_ranking(job_id):
         """
         applications = db.execute_query(apps_query, (job_id,))
         
-        total_candidates = len(applications)
+        # Also get uploaded resumes for this recruiter
+        resumes_query = """
+        SELECT r.id, r.recruiter_id, r.original_name, r.file_path,
+               CAST(SUBSTRING_INDEX(r.original_name, '.', 1) AS CHAR) as first_name,
+               '' as last_name,
+               'resume-upload@system.com' as email,
+               true as is_resume_upload,
+               r.id as candidate_id
+        FROM recruiter_resumes r
+        WHERE r.recruiter_id = (SELECT recruiter_id FROM jobs WHERE id = %s)
+        """
+        resumes = db.execute_query(resumes_query, (job_id,))
+        
+        # Combine applications and resumes
+        all_candidates = applications + resumes
+        total_candidates = len(all_candidates)
         
         # Update total candidates
         db.execute_query("""
@@ -255,7 +274,7 @@ def process_ranking(job_id):
         
         rankings = []
         
-        for i, application in enumerate(applications):
+        for i, application in enumerate(all_candidates):
             try:
                 # Get candidate details
                 candidate_data = get_candidate_data(application['id'], application.get('is_resume_upload', False))
@@ -383,11 +402,11 @@ def process_ranking(job_id):
                 
                 # Store ranking
                 if application.get('is_resume_upload'):
-                    # For recruiter resumes - use the actual application_id
+                    # For recruiter resumes - use NULL for application_id since there's no application record
                     ranking_query = """
                     INSERT INTO rankings 
                     (job_id, candidate_id, application_id, skill_score, education_score, experience_score, total_score, rank_position, score_breakdown)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    VALUES (%s, %s, NULL, %s, %s, %s, %s, %s, %s)
                     ON DUPLICATE KEY UPDATE
                     skill_score = VALUES(skill_score),
                     education_score = VALUES(education_score),
@@ -397,13 +416,13 @@ def process_ranking(job_id):
                     """
                     db.execute_query(ranking_query, (
                         job_id, 
-                        application['candidate_id'], 
-                        application['id'],  # Use actual application_id
-                        skill_score, 
-                        education_score, 
-                        experience_score, 
-                        total_score, 
-                        0,  # rank_position will be updated later
+                        application['candidate_id'],  # This is the resume ID
+                        None,  # No application_id for uploaded resumes
+                        skill_score,
+                        education_score,
+                        experience_score,
+                        total_score,
+                        i + 1,  # rank_position
                         json.dumps(scores)
                     ))
                 else:

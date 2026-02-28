@@ -53,13 +53,17 @@ app.use(cors({
   credentials: true
 }));
 
-// Rate limiting
+// Rate limiting (excluding AI ranking endpoint)
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 100, // limit each IP to 100 requests per windowMs
   message: {
     success: false,
     message: 'Too many requests from this IP, please try again later.'
+  },
+  skip: (req) => {
+    // Skip rate limiting for AI ranking endpoint
+    return req.path === '/api/recruiter/trigger-ranking';
   }
 });
 app.use('/api/', limiter);

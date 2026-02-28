@@ -450,39 +450,74 @@ router.post('/trigger-ranking', authenticateToken, authorizeRole('recruiter'), a
     
     console.log(`🚀 Triggering AI ranking for recruiter ${recruiterId}`);
     
-    // Get the most recent job that has pending applications
+    // Get the most recent job that has pending applications OR uploaded resumes
     const jobWithPendingApps = await db.query(
       `SELECT j.* FROM jobs j 
-       INNER JOIN applications a ON j.id = a.job_id 
-       WHERE j.recruiter_id = ? AND a.status = 'pending'
+       LEFT JOIN applications a ON j.id = a.job_id AND a.status = 'pending'
+       LEFT JOIN recruiter_resumes r ON j.recruiter_id = r.recruiter_id
+       WHERE j.recruiter_id = ? AND (a.id IS NOT NULL OR r.id IS NOT NULL)
        ORDER BY j.created_at DESC 
        LIMIT 1`,
       [recruiterId]
     );
     
+    // If no pending applications, check for uploaded resumes
     if (!jobWithPendingApps || jobWithPendingApps.length === 0) {
-      return res.status(400).json({
-        success: false,
-        message: 'No pending applications to rank'
-      });
+      // Check if there are any uploaded resumes for this recruiter
+      const resumeCheck = await db.query(
+        'SELECT COUNT(*) as count FROM recruiter_resumes WHERE recruiter_id = ?',
+        [recruiterId]
+      );
+      
+      if (resumeCheck[0].count === 0) {
+        return res.status(400).json({
+          success: false,
+          message: 'No pending applications or uploaded resumes to rank'
+        });
+      }
+      
+      // Get the most recent job for ranking uploaded resumes
+      const recentJob = await db.query(
+        'SELECT * FROM jobs WHERE recruiter_id = ? ORDER BY created_at DESC LIMIT 1',
+        [recruiterId]
+      );
+      
+      if (!recentJob || recentJob.length === 0) {
+        return res.status(400).json({
+          success: false,
+          message: 'No jobs found. Please create a job first.'
+        });
+      }
+      
+      // Use the most recent job for ranking uploaded resumes
+      jobWithPendingApps = recentJob;
     }
     
     const jobId = jobWithPendingApps[0].id;
     console.log(`📋 Using job ${jobId}: ${jobWithPendingApps[0].title}`);
     
-    // Count pending applications for this job
+    // Count pending applications and uploaded resumes for this job
     const pendingApplications = await db.query(
       'SELECT COUNT(*) as count FROM applications WHERE job_id = ? AND status = ?',
       [jobId, 'pending']
     );
     
+    const uploadedResumes = await db.query(
+      'SELECT COUNT(*) as count FROM recruiter_resumes WHERE recruiter_id = ?',
+      [recruiterId]
+    );
+    
+    const totalToRank = (pendingApplications[0]?.count || 0) + (uploadedResumes[0]?.count || 0);
+    
     // Trigger AI ranking
     try {
       const axios = require('axios');
+      console.log(`🤖 Calling AI service for job ${jobId}...`);
+      
       const aiResponse = await axios.post('http://localhost:5001/api/rank-candidates', {
         job_id: jobId
       }, {
-        timeout: 10000,
+        timeout: 60000, // Increased to 60 seconds
         headers: {
           'Content-Type': 'application/json'
         }
@@ -494,15 +529,29 @@ router.post('/trigger-ranking', authenticateToken, authorizeRole('recruiter'), a
         success: true,
         message: 'AI ranking process started',
         job_id: jobId,
-        applications_to_rank: pendingApplications[0].count
+        applications_to_rank: totalToRank
       });
       
     } catch (aiError) {
       console.error('❌ Failed to trigger AI ranking:', aiError.message);
-      res.status(500).json({
-        success: false,
-        message: 'Failed to trigger AI ranking: ' + aiError.message
-      });
+      
+      // Check if AI service is actually running
+      if (aiError.code === 'ECONNREFUSED') {
+        res.status(500).json({
+          success: false,
+          message: 'AI service is not running. Please start the AI service on port 5001.'
+        });
+      } else if (aiError.code === 'ECONNABORTED') {
+        res.status(500).json({
+          success: false,
+          message: 'AI ranking timed out. The process may take longer than expected. Please try again.'
+        });
+      } else {
+        res.status(500).json({
+          success: false,
+          message: 'Failed to trigger AI ranking: ' + aiError.message
+        });
+      }
     }
     
   } catch (error) {

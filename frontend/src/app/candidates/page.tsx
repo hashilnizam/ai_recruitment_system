@@ -36,6 +36,8 @@ export default function CandidatesPage() {
   const [selectedJob, setSelectedJob] = useState('all');
   const [showUploadSection, setShowUploadSection] = useState(false);
   const [topRankedCandidates, setTopRankedCandidates] = useState<any[]>([]);
+  const [rankingSuccess, setRankingSuccess] = useState(false);
+  const [rankingMessage, setRankingMessage] = useState('');
 
   useEffect(() => {
     if (user?.role !== 'recruiter') {
@@ -62,6 +64,29 @@ export default function CandidatesPage() {
     setRefreshing(false);
   };
 
+  const handleCheckResults = async () => {
+    setRefreshing(true);
+    console.log('🔍 Manually checking for AI ranking results...');
+    await fetchData();
+    
+    // Check if we have ranked candidates after refresh
+    const rankedCandidates = candidates.filter((c: any) => 
+      c.rank_position !== null && c.rank_position !== undefined && c.rank_position > 0
+    );
+    
+    if (rankedCandidates.length > 0) {
+      setRankingMessage(`✅ Found ${rankedCandidates.length} ranked candidates!`);
+      setTimeout(() => {
+        setRankingSuccess(false);
+        setRankingMessage('');
+      }, 3000);
+    } else {
+      setRankingMessage('⏱️ No rankings found yet. AI processing may still be in progress.');
+    }
+    
+    setRefreshing(false);
+  };
+
   const triggerAIRanking = async () => {
     try {
       setRankingInProgress(true);
@@ -72,27 +97,47 @@ export default function CandidatesPage() {
       console.log('AI ranking response:', response);
       
       if (response?.success) {
-        const result = response;
+        const result = response as any;
         console.log('AI ranking triggered:', result);
+        const applicationsCount = result.applications_to_rank || result.data?.applications_to_rank || 1;
+        setRankingMessage(`AI ranking started for ${applicationsCount} candidates`);
+        setRankingSuccess(true);
         
         // Start polling for updates
         let pollCount = 0;
-        const maxPolls = 24; // 2 minutes max (24 * 5 seconds)
+        const maxPolls = 12; // 1 minute max (12 * 5 seconds)
         
         const pollInterval = setInterval(async () => {
           pollCount++;
+          console.log(`Poll ${pollCount}: Checking for ranking updates...`);
           await fetchData();
           
-          // Get fresh candidates data
-          const freshResponse = await recruiterAPI.getResumes();
-          const rankedCandidates = freshResponse.data?.filter((c: any) => c.rank_position) || [];
+          // Get fresh candidates data and check if any have rankings
+          const freshCandidates = candidates;
+          const rankedCandidates = freshCandidates.filter((c: any) => 
+            c.rank_position !== null && c.rank_position !== undefined && c.rank_position > 0
+          );
+          
+          console.log(`Poll ${pollCount}: Found ${rankedCandidates.length} ranked candidates out of ${freshCandidates.length} total`);
           
           if (rankedCandidates.length > 0 || pollCount >= maxPolls) {
             clearInterval(pollInterval);
             setRankingInProgress(false);
             await fetchData(); // Final refresh
+            
+            if (rankedCandidates.length > 0) {
+              setRankingMessage(`✅ AI ranking completed! ${rankedCandidates.length} candidates ranked`);
+            } else {
+              setRankingMessage('⏱️ AI ranking timed out. Click "Check Results" to try again.');
+            }
+            
+            // Hide success message after 5 seconds
+            setTimeout(() => {
+              setRankingSuccess(false);
+              setRankingMessage('');
+            }, 5000);
           }
-        }, 5000);
+        }, 10000); // Changed to 10 seconds instead of 5
         
       } else {
         console.error('Failed to trigger AI ranking:', response?.message || 'Unknown error');
@@ -405,6 +450,13 @@ export default function CandidatesPage() {
                 {rankingInProgress ? 'AI Ranking...' : 'AI Ranking'}
               </button>
               <button
+                onClick={() => router.push('/candidates/ranking-results')}
+                className="flex items-center px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
+              >
+                <TrophyIcon className="w-4 h-4 mr-2" />
+                View Results
+              </button>
+              <button
                 onClick={() => setShowUploadSection(!showUploadSection)}
                 className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
               >
@@ -414,6 +466,24 @@ export default function CandidatesPage() {
             </div>
           </div>
         </div>
+
+        {/* Success Message */}
+        {rankingSuccess && (
+          <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-6">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center">
+                <div className="w-2 h-2 bg-green-500 rounded-full mr-3"></div>
+                <p className="text-green-800 font-medium">{rankingMessage}</p>
+              </div>
+              <button
+                onClick={handleCheckResults}
+                className="px-3 py-1 bg-green-600 text-white rounded text-sm hover:bg-green-700 transition-colors"
+              >
+                Check Results
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Resume Upload Section */}
         {showUploadSection && (
