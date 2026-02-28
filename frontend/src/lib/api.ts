@@ -2,6 +2,9 @@ import axios, { AxiosInstance, AxiosResponse } from 'axios';
 import { ApiResponse } from '@/types';
 import { ApiErrorHandler } from '@/utils/apiErrorHandler';
 
+// Re-import axios for direct use in download function
+const axiosDirect = axios;
+
 class ApiClient {
   private client: AxiosInstance;
 
@@ -225,6 +228,43 @@ export const recruiterAPI = {
   
   getResumeDetails: async (id: string) => {
     const response = await api.get(`/api/recruiter/resumes/${id}/details`);
+    return response;
+  },
+
+  downloadResume: async (id: number) => {
+    // Create a separate axios instance for file downloads
+    const token = localStorage.getItem('token');
+    const response = await axiosDirect.get(
+      `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'}/api/recruiter/resumes/download/${id}`,
+      {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+        responseType: 'blob' // Important for file downloads
+      }
+    );
+    
+    // Create download link
+    const url = window.URL.createObjectURL(new Blob([response.data]));
+    const link = document.createElement('a');
+    link.href = url;
+    
+    // Get filename from response headers or use default
+    const contentDisposition = response.headers['content-disposition'];
+    let filename = `resume-${id}.pdf`;
+    if (contentDisposition) {
+      const filenameMatch = contentDisposition.match(/filename="(.+)"/);
+      if (filenameMatch) {
+        filename = filenameMatch[1];
+      }
+    }
+    
+    link.setAttribute('download', filename);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.URL.revokeObjectURL(url);
+    
     return response;
   },
 };

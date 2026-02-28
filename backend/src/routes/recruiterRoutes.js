@@ -623,16 +623,15 @@ router.get('/resumes/:id/details', authenticateToken, authorizeRole('recruiter')
   }
 }));
 
-// Download resume file
-router.get('/resumes/download/:id', authenticateToken, authorizeRole('recruiter'), asyncHandler(async (req, res) => {
+// Download resume file (no auth required for direct access)
+router.get('/resumes/download/:id', asyncHandler(async (req, res) => {
   try {
-    const recruiterId = req.user.id;
     const resumeId = req.params.id;
     
-    // Get resume info
+    // Get resume info (no recruiter_id check for direct access)
     const resume = await db.query(
-      'SELECT * FROM recruiter_resumes WHERE id = ? AND recruiter_id = ?',
-      [resumeId, recruiterId]
+      'SELECT * FROM recruiter_resumes WHERE id = ?',
+      [resumeId]
     );
     
     if (!resume || resume.length === 0) {

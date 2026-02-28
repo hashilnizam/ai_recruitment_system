@@ -35,28 +35,35 @@ export default function ResumeDetailsPage({ params }: { params: { id: string } }
 
   const handleDownload = async (resumeId: number) => {
     try {
-      const response = await fetch(`/api/recruiter/resumes/download/${resumeId}`, {
-        method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`,
-        },
-      });
-      
-      if (response.ok) {
-        const blob = await response.blob();
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `resume-${resumeId}.pdf`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        window.URL.revokeObjectURL(url);
-      } else {
-        console.error('Download failed');
-      }
+      // Use the recruiterAPI download function instead of direct fetch
+      await recruiterAPI.downloadResume(resumeId);
     } catch (error) {
       console.error('Download error:', error);
+      // Fallback to direct fetch if API function fails
+      try {
+        const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'}/api/recruiter/resumes/download/${resumeId}`, {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('token')}`,
+          },
+        });
+        
+        if (response.ok) {
+          const blob = await response.blob();
+          const url = window.URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `resume-${resumeId}.pdf`;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          window.URL.revokeObjectURL(url);
+        } else {
+          console.error('Download failed');
+        }
+      } catch (fallbackError) {
+        console.error('Fallback download error:', fallbackError);
+      }
     }
   };
 
