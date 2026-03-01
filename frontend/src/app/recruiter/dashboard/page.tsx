@@ -7,27 +7,62 @@ import Layout from '@/components/Layout';
 import StatCard from '@/components/StatCard';
 import LoadingSpinner from '@/components/LoadingSpinner';
 import Table from '@/components/Table';
-import { jobsAPI } from '@/lib/api';
+import { dashboardAPI } from '@/lib/api';
 import { 
   BriefcaseIcon, 
   SparklesIcon, 
   DocumentIcon, 
   ClockIcon, 
   UsersIcon, 
-  ChartIcon 
+  ChartIcon,
+  TrendingUpIcon,
+  TrendingDownIcon
 } from '@/components/Icons';
+
+interface DashboardData {
+  summary: {
+    totalJobs: number;
+    activeJobs: number;
+    totalApplications: number;
+    pendingRankings: number;
+    changes: {
+      jobsChange: number;
+      activeJobsChange: number;
+      applicationsChange: number;
+      pendingChange: number;
+    };
+  };
+  recentJobs: Array<{
+    id: number;
+    title: string;
+    status: string;
+    application_count: number;
+    created_at: string;
+    location?: string;
+  }>;
+  applications7Days: {
+    data: Array<{
+      date: string;
+      count: number;
+    }>;
+    total: number;
+    average: number;
+  };
+  rankings7Days: {
+    data: Array<{
+      date: string;
+      count: number;
+    }>;
+    total: number;
+    average: number;
+  };
+}
 
 export default function RecruiterDashboard() {
   const { user } = useAuth();
   const router = useRouter();
   const [loading, setLoading] = useState(true);
-  const [stats, setStats] = useState({
-    totalJobs: 0,
-    activeJobs: 0,
-    totalApplications: 0,
-    pendingRankings: 0,
-  });
-  const [recentJobs, setRecentJobs] = useState([]);
+  const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
 
   useEffect(() => {
     if (!user || user.role !== 'recruiter') {
@@ -40,39 +75,61 @@ export default function RecruiterDashboard() {
   const fetchDashboardData = async () => {
     try {
       setLoading(true);
+      console.log('🔄 Fetching dashboard data for user:', user?.id);
       
-      // Fetch dashboard stats
-      const statsResponse = await fetch('http://localhost:5000/api/jobs/stats/dashboard', {
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        }
-      });
-      const statsData = await statsResponse.json();
+      const response = await dashboardAPI.getRecruiterDashboard();
       
-      if (statsData.success) {
-        setStats(statsData.data);
+      if (response.data && response.data.success) {
+        console.log('✅ Dashboard data received:', response.data.data);
+        setDashboardData(response.data.data);
+      } else {
+        console.error('❌ Dashboard API error:', response.data?.message || 'Unknown error');
+        // Set fallback data to prevent infinite loading
+        setDashboardData({
+          summary: {
+            totalJobs: 0,
+            activeJobs: 0,
+            totalApplications: 0,
+            pendingRankings: 0,
+            changes: {
+              jobsChange: 0,
+              activeJobsChange: 0,
+              applicationsChange: 0,
+              pendingChange: 0
+            }
+          },
+          recentJobs: [],
+          applications7Days: { data: [], total: 0, average: 0 },
+          rankings7Days: { data: [], total: 0, average: 0 }
+        });
       }
-      
-      // Fetch jobs
-      const jobsResponse = await fetch('http://localhost:5000/api/jobs', {
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        }
-      });
-      const jobsData = await jobsResponse.json();
-      
-      if (jobsData.success) {
-        setRecentJobs(jobsData.data.slice(0, 5));
-      }
-      
     } catch (error) {
-      console.error('Error fetching dashboard data:', error);
+      console.error('❌ Error fetching dashboard data:', error);
+      // Set fallback data to prevent infinite loading
+      setDashboardData({
+        summary: {
+          totalJobs: 0,
+          activeJobs: 0,
+          totalApplications: 0,
+          pendingRankings: 0,
+          changes: {
+            jobsChange: 0,
+            activeJobsChange: 0,
+            applicationsChange: 0,
+            pendingChange: 0
+          }
+        },
+        recentJobs: [],
+        applications7Days: { data: [], total: 0, average: 0 },
+        rankings7Days: { data: [], total: 0, average: 0 }
+      });
     } finally {
       setLoading(false);
     }
   };
 
-  if (loading) {
+  if (loading || !dashboardData) {
+    console.log('🔍 Dashboard loading state:', { loading, dashboardData: !!dashboardData, user: !!user });
     return (
       <Layout>
         <LoadingSpinner size="lg" text="Loading dashboard..." />
@@ -129,6 +186,54 @@ export default function RecruiterDashboard() {
     },
   ];
 
+  // Simple bar chart component
+  const SimpleBarChart = ({ data, title, color, total, average }: {
+    data: Array<{ date: string; count: number }>;
+    title: string;
+    color: string;
+    total: number;
+    average: number;
+  }) => {
+    const maxCount = Math.max(...data.map(d => d.count), 1);
+    
+    return (
+      <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-100">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-bold text-gray-900">{title}</h3>
+          <div className="flex items-center space-x-4 text-sm">
+            <div>
+              <span className="text-gray-500">Total:</span>
+              <span className="font-semibold text-gray-900 ml-1">{total}</span>
+            </div>
+            <div>
+              <span className="text-gray-500">Avg:</span>
+              <span className="font-semibold text-gray-900 ml-1">{average}</span>
+            </div>
+          </div>
+        </div>
+        
+        <div className="h-48 flex items-end justify-between space-x-2">
+          {data.map((item, index) => (
+            <div key={index} className="flex-1 flex flex-col items-center">
+              <div 
+                className={`w-full ${color} rounded-t transition-all duration-300 hover:opacity-80`}
+                style={{ 
+                  height: `${Math.max((item.count / maxCount) * 100, 2)}%` 
+                }}
+              />
+              <div className="text-xs text-gray-600 mt-2 font-medium">
+                {item.date}
+              </div>
+              <div className="text-sm font-bold text-gray-900">
+                {item.count}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  };
+
   return (
     <Layout>
       <div className="space-y-8">
@@ -136,33 +241,33 @@ export default function RecruiterDashboard() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           <StatCard
             title="Total Jobs Posted"
-            value={stats.totalJobs}
-            change="+12%"
-            changeType="increase"
+            value={dashboardData.summary.totalJobs}
+            change={`${dashboardData.summary.changes.jobsChange > 0 ? '+' : ''}${dashboardData.summary.changes.jobsChange}%`}
+            changeType={dashboardData.summary.changes.jobsChange > 0 ? 'increase' : dashboardData.summary.changes.jobsChange < 0 ? 'decrease' : 'neutral'}
             icon={<BriefcaseIcon size={24} />}
             iconBgColor="bg-gradient-to-br from-blue-400 to-blue-600"
           />
           <StatCard
             title="Active Jobs"
-            value={stats.activeJobs}
-            change="+8%"
-            changeType="increase"
+            value={dashboardData.summary.activeJobs}
+            change={`${dashboardData.summary.changes.activeJobsChange > 0 ? '+' : ''}${dashboardData.summary.changes.activeJobsChange}%`}
+            trend={dashboardData.summary.changes.activeJobsChange > 0 ? 'up' : 'down'}
             icon={<SparklesIcon size={24} />}
             iconBgColor="bg-gradient-to-br from-green-400 to-green-600"
           />
           <StatCard
             title="Total Applications"
-            value={stats.totalApplications}
-            change="+24%"
-            changeType="increase"
+            value={dashboardData.summary.totalApplications}
+            change={`${dashboardData.summary.changes.applicationsChange > 0 ? '+' : ''}${dashboardData.summary.changes.applicationsChange}%`}
+            changeType={dashboardData.summary.changes.applicationsChange > 0 ? 'increase' : dashboardData.summary.changes.applicationsChange < 0 ? 'decrease' : 'neutral'}
             icon={<DocumentIcon size={24} />}
             iconBgColor="bg-gradient-to-br from-purple-400 to-purple-600"
           />
           <StatCard
             title="Pending Rankings"
-            value={stats.pendingRankings}
-            change="-5%"
-            changeType="decrease"
+            value={dashboardData.summary.pendingRankings}
+            change={`${dashboardData.summary.changes.pendingChange > 0 ? '+' : ''}${dashboardData.summary.changes.pendingChange}%`}
+            changeType={dashboardData.summary.changes.pendingChange > 0 ? 'increase' : dashboardData.summary.changes.pendingChange < 0 ? 'decrease' : 'neutral'}
             icon={<ClockIcon size={24} />}
             iconBgColor="bg-gradient-to-br from-orange-400 to-orange-600"
           />
@@ -239,21 +344,28 @@ export default function RecruiterDashboard() {
           </div>
           <Table
             columns={jobColumns}
-            data={recentJobs}
+            data={dashboardData.recentJobs}
             onRowClick={(job) => router.push(`/jobs/${job.id}`)}
           />
         </div>
 
-        {/* Activity Overview */}
-        <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-100">
-          <h3 className="text-lg font-bold text-gray-900 mb-4">Activity Overview</h3>
-          <div className="h-64 flex items-center justify-center bg-gradient-to-br from-blue-50 to-purple-50 rounded-lg">
-            <div className="text-center">
-              <ChartIcon size={48} className="text-gray-400 mx-auto mb-2" />
-              <p className="text-gray-600">Analytics chart coming soon</p>
-              <p className="text-sm text-gray-500 mt-1">Track your recruitment metrics</p>
-            </div>
-          </div>
+        {/* Charts Section */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <SimpleBarChart
+            data={dashboardData.applications7Days.data}
+            title="Applications Received (Last 7 Days)"
+            color="bg-blue-500"
+            total={dashboardData.applications7Days.total}
+            average={dashboardData.applications7Days.average}
+          />
+          
+          <SimpleBarChart
+            data={dashboardData.rankings7Days.data}
+            title="AI Rankings Completed (Last 7 Days)"
+            color="bg-green-500"
+            total={dashboardData.rankings7Days.total}
+            average={dashboardData.rankings7Days.average}
+          />
         </div>
       </div>
     </Layout>

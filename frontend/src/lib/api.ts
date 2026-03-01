@@ -283,4 +283,20 @@ export const aiAPI = {
     axios.get(`${process.env.NEXT_PUBLIC_AI_SERVICE_URL || 'http://localhost:5001'}/api/ranking-status/${jobId}`),
 };
 
+// Analytics API
+export const analyticsAPI = {
+  getRecruiterAnalytics: () => 
+    api.get('/api/analytics/recruiter'),
+};
+
+// Dashboard API
+export const dashboardAPI = {
+  getRecruiterDashboard: () => 
+    api.get('/api/dashboard/recruiter', {
+      params: {
+        _t: Date.now() // Cache-busting parameter
+      }
+    }),
+};
+
 export default api;

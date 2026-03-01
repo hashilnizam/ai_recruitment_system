@@ -185,12 +185,6 @@ export default function ResumeDetailsPage({ params }: { params: { id: string } }
                 </div>
                 <div className="text-sm text-gray-600">Experience</div>
               </div>
-              <div className="text-center">
-                <div className="text-3xl font-bold text-red-600">
-                  {typeof resume.education_score === 'number' ? resume.education_score.toFixed(1) : '0.0'}%
-                </div>
-                <div className="text-sm text-gray-600">Education</div>
-              </div>
             </div>
           </div>
         )}

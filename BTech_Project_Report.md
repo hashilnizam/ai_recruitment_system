@@ -9,10 +9,10 @@ A Project Report Submitted in Partial Fulfillment of the Requirements for the Aw
 
 **SUBMITTED BY**
 
-IFFAT NIZAM  SBC22CS073  
-KEERTHANA S  SBC22CS087  
-MANAV L     SBC22CS091  
-MILIE ELIZABETH MATHEWS SBC22CS096  
+IFFAT NIZAM               SBC22CS073  
+KEERTHANA S               SBC22CS087  
+MANAV L                   SBC22CS091  
+MILIE ELIZABETH MATHEWS   SBC22CS096  
 
 Department of Computer Science and Engineering  
 SREE BUDDHA COLLEGE OF ENGINEERING  
@@ -61,10 +61,10 @@ I hereby declare that the project report entitled "INTELLIGENT RESUME ANALYSIS A
 I also declare that this project report has not been submitted by us for the award of any other degree, diploma, title or recognition before.
 
 **SIGNATURE**  
-**IFFAT NIZAM**  SBC22CS073  
-**KEERTHANA S**  SBC22CS087  
-**MANAV L**     SBC22CS091  
-**MILIE ELIZABETH MATHEWS** SBC22CS096  
+**IFFAT NIZAM**               SBC22CS073  
+**KEERTHANA S**               SBC22CS087  
+**MANAV L**                   SBC22CS091  
+**MILIE ELIZABETH MATHEWS**   SBC22CS096  
 
 Department of Computer Science and Engineering  
 SREE BUDDHA COLLEGE OF ENGINEERING
@@ -77,7 +77,7 @@ First and foremost, we would like to express our sincere gratitude to the Almigh
 
 We extend our heartfelt thanks to our esteemed guide Dr. Sunil S S, Associate Professor in the Department of Computer Science and Engineering, for his invaluable guidance, constant encouragement, and constructive suggestions throughout the project. His expertise in Artificial Intelligence and Software Engineering has been instrumental in shaping this work.
 
-We are deeply grateful to Dr. K Krishnakumar, Principal of SREE BUDDHA COLLEGE OF ENGINEERING, for providing the excellent infrastructure and facilities that enabled the successful completion of this project.
+We are deeply grateful to Dr. K Krishnakumar, Principal of Sree Buddha College of Engineering, for providing the excellent infrastructure and facilities that enabled the successful completion of this project.
 
 We would like to thank Dr. Annlin Jeba, Associate Professor and Head of the Department of Computer Science and Engineering, for her support and motivation during the course of this project.
 

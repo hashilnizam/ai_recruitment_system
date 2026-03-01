@@ -15,6 +15,8 @@ const emailRoutes = require('./routes/emailRoutes');
 const enhancedJobRoutes = require('./routes/enhancedJobRoutes');
 const recruiterRoutes = require('./routes/recruiterRoutes');
 const rankingRoutes = require('./routes/rankingRoutes');
+const analyticsRoutes = require('./routes/analyticsRoutes');
+const dashboardRoutes = require('./routes/dashboardRoutes'); // Dashboard routes
 
 // Import middleware
 const { notFound, errorHandler } = require('./middleware/errorHandler');
@@ -94,6 +96,8 @@ app.use('/api/email', emailRoutes);
 app.use('/api/jobs', enhancedJobRoutes); // Enhanced job routes
 app.use('/api/recruiter', recruiterRoutes); // Recruiter routes
 app.use('/api/rankings', require('./routes/rankingRoutes')); // Ranking routes
+app.use('/api/analytics', analyticsRoutes); // Analytics routes
+app.use('/api/dashboard', dashboardRoutes); // Dashboard routes
 
 // 404 handler
 app.use(notFound);

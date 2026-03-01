@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import Layout from '@/components/Layout';
 import StatCard from '@/components/StatCard';
 import LoadingSpinner from '@/components/LoadingSpinner';
-import { jobsAPI, applicationsAPI } from '@/lib/api';
+import { analyticsAPI } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 import { 
   BriefcaseIcon, 
@@ -20,225 +20,96 @@ import {
   PieChartIcon
 } from 'lucide-react';
 
+interface AnalyticsData {
+  summary: {
+    totalJobs: number;
+    activeJobs: number;
+    totalApplications: number;
+    avgMatchScore: string;
+    appsPerJob: string;
+  };
+  trends: Array<{
+    month: string;
+    count: number;
+  }>;
+  scoreDistribution: {
+    high: number;
+    medium: number;
+    low: number;
+  };
+  topJobs: Array<{
+    id: number;
+    title: string;
+    application_count: number;
+    avg_score: number;
+  }>;
+  commonSkills: Array<{
+    skill_name: string;
+    count: number;
+  }>;
+  successRate: number;
+  growth: number;
+  insights: Array<{
+    type: 'success' | 'warning' | 'info';
+    message: string;
+  }>;
+}
+
 export default function AnalyticsPage() {
   const { user } = useAuth();
   const router = useRouter();
   const [loading, setLoading] = useState(true);
-  const [analytics, setAnalytics] = useState<any>(null);
-  const [jobs, setJobs] = useState<any[]>([]);
-  const [allApplications, setAllApplications] = useState<any[]>([]);
-
-  interface Job {
-    id: number;
-    title: string;
-    status: string;
-    location?: string;
-    employment_type?: string;
-    salary_min?: number;
-    salary_max?: number;
-    experience_level?: string;
-    created_at: string;
-    updated_at: string;
-  }
-
-  interface Application {
-    id: number;
-    job_id: number;
-    candidate_id: number;
-    status: string;
-    applied_at: string;
-    updated_at: string;
-    total_score?: number;
-    rank_position?: number;
-    skill_score?: number;
-    education_score?: number;
-    experience_score?: number;
-    skills?: Array<{
-      skill_name: string;
-      proficiency_level: string;
-      years_of_experience?: number;
-    }>;
-  }
-
-  interface AnalyticsData {
-    overview: {
-      totalJobs: number;
-      activeJobs: number;
-      totalApplications: number;
-      avgScore: number;
-      conversionRate: number;
-    };
-    jobPerformance: Array<{
-      jobTitle: string;
-      applications: number;
-      avgScore: number;
-      status: string;
-    }>;
-    applicationTrends: Array<{
-      month: string;
-      applications: number;
-    }>;
-    topSkills: Array<{
-      skill: string;
-      count: number;
-    }>;
-    scoringInsights: {
-      highScorers: number;
-      mediumScorers: number;
-      lowScorers: number;
-    };
-  }
+  const [analytics, setAnalytics] = useState<AnalyticsData | null>(null);
 
   const fetchAnalytics = async () => {
     try {
       setLoading(true);
-      console.log('🔄 Starting analytics fetch for user:', user?.id, user?.role);
+      console.log('🔄 Fetching analytics for user:', user?.id);
       
-      // Fetch jobs
-      const jobsResponse = await jobsAPI.getJobs({ recruiterId: user?.id });
-      console.log('📊 Jobs API response:', jobsResponse.data);
-      const jobsList = jobsResponse.data?.data || [];
-      console.log('📋 Jobs list:', jobsList);
-      setJobs(jobsList);
-
-      // Fetch all applications
-      let applications: any[] = [];
-      let rankedCount = 0;
-      const skillsMap: Record<string, number> = {};
-
-      for (const job of jobsList) {
-        try {
-          console.log(`🔍 Fetching applications for job ${job.id}`);
-          const appsResponse = await applicationsAPI.getJobApplications(job.id);
-          console.log(`📄 Applications for job ${job.id}:`, appsResponse.data);
-          const jobApplications = appsResponse.data?.data || [];
-          applications = [...applications, ...jobApplications];
-          
-          jobApplications.forEach((app: any) => {
-            if (app.skills) {
-              app.skills.forEach((skill: any) => {
-                skillsMap[skill.skill_name] = (skillsMap[skill.skill_name] || 0) + 1;
-              });
-            }
-            if (app.total_score) rankedCount++;
-          });
-        } catch (error) {
-          console.error(`Error fetching applications for job ${job.id}:`, error);
-        }
+      const response = await analyticsAPI.getRecruiterAnalytics();
+      
+      if (response.success) {
+        console.log('✅ Analytics data received:', response.data);
+        setAnalytics(response.data);
+      } else {
+        console.error('❌ Analytics API error:', response.message);
       }
-
-      setAllApplications(applications);
-
-      // Calculate job performance
-      const jobPerformance = (jobsList || []).map((job: Job) => {
-        const jobApps = applications.filter((app: Application) => app.job_id === job.id);
-        const avgScore = jobApps.length > 0
-          ? jobApps.reduce((sum, app) => sum + (app.total_score || 0), 0) / jobApps.length
-          : 0;
-        
-        return {
-          jobTitle: job.title,
-          applications: jobApps.length,
-          avgScore: Math.round(avgScore),
-          status: job.status,
-        };
-      }).sort((a: { applications: number }, b: { applications: number }) => b.applications - a.applications).slice(0, 5);
-
-      // Top skills
-      const topSkills = Object.entries(skillsMap)
-        .map(([skill, count]) => ({ skill, count }))
-        .sort((a: { count: number }, b: { count: number }) => b.count - a.count)
-        .slice(0, 10);
-
-      // Calculate overview
-      const overview = {
-        totalJobs: jobsList.length,
-        activeJobs: jobsList.filter((job: Job) => job.status === 'published').length,
-        totalApplications: applications.length,
-        avgScore: applications.length > 0 
-          ? Math.round(applications.reduce((sum, app) => sum + (app.total_score || 0), 0) / applications.length)
-          : 0,
-        conversionRate: rankedCount > 0 ? Math.round((rankedCount / applications.length) * 100) : 0
-      };
-
-      // Application trends (mock data for now - you can enhance this)
-      const applicationTrends = [
-        { month: 'Jan', applications: Math.floor(Math.random() * 20) + 10 },
-        { month: 'Feb', applications: Math.floor(Math.random() * 20) + 15 },
-        { month: 'Mar', applications: Math.floor(Math.random() * 20) + 20 },
-        { month: 'Apr', applications: Math.floor(Math.random() * 20) + 18 },
-        { month: 'May', applications: Math.floor(Math.random() * 20) + 25 },
-        { month: 'Jun', applications: allApplications.length },
-      ];
-
-      setAnalytics({
-        overview,
-        jobPerformance,
-        applicationTrends,
-        topSkills,
-        scoringInsights: {
-          highScorers: allApplications.filter((a: any) => a.total_score >= 80).length,
-          mediumScorers: allApplications.filter((a: any) => a.total_score >= 60 && a.total_score < 80).length,
-          lowScorers: allApplications.filter((a: any) => a.total_score > 0 && a.total_score < 60).length,
-        },
-      });
-      
-      console.log('✅ Analytics data set successfully:', {
-        overview,
-        jobPerformance: jobPerformance.length,
-        topSkills: topSkills.length,
-        applicationsCount: applications.length
-      });
     } catch (error) {
       console.error('❌ Error fetching analytics:', error);
-      // Set default analytics data to prevent infinite loading
-      setAnalytics({
-        overview: {
-          totalJobs: 0,
-          activeJobs: 0,
-          totalApplications: 0,
-          avgScore: 0,
-          conversionRate: 0
-        },
-        jobPerformance: [],
-        applicationTrends: [],
-        topSkills: [],
-        scoringInsights: {
-          highScorers: 0,
-          mediumScorers: 0,
-          lowScorers: 0
-        }
-      });
     } finally {
-      console.log('🏁 Analytics fetch completed, setting loading to false');
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    console.log('🎯 Analytics useEffect triggered:', { user: user?.id, role: user?.role });
     if (!user) {
       router.push('/auth/login');
       return;
     }
     
     if (user.role !== 'recruiter') {
-      console.log('❌ User is not a recruiter, redirecting to candidate dashboard...');
+      console.log('❌ User is not a recruiter, redirecting...');
       router.push('/dashboard/candidate');
       return;
     }
+    
     console.log('✅ User is recruiter, fetching analytics...');
     fetchAnalytics();
   }, [user, router]);
 
   if (loading || !analytics) {
-    console.log('🔄 Still loading or no analytics data:', { loading, analytics });
     return (
       <Layout>
         <LoadingSpinner size="lg" text="Loading analytics..." />
       </Layout>
     );
   }
+
+  // Calculate score distribution percentages
+  const totalScores = analytics.scoreDistribution.high + analytics.scoreDistribution.medium + analytics.scoreDistribution.low;
+  const highScorePercentage = totalScores > 0 ? ((analytics.scoreDistribution.high / totalScores) * 100).toFixed(1) : 0;
+  const mediumScorePercentage = totalScores > 0 ? ((analytics.scoreDistribution.medium / totalScores) * 100).toFixed(1) : 0;
+  const lowScorePercentage = totalScores > 0 ? ((analytics.scoreDistribution.low / totalScores) * 100).toFixed(1) : 0;
 
   return (
     <Layout>
@@ -249,204 +120,216 @@ export default function AnalyticsPage() {
           <p className="text-gray-600">Track your recruitment performance and insights</p>
         </div>
 
-        {/* Overview Stats */}
+        {/* Top Summary Cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
           <StatCard
             title="Total Jobs"
-            value={analytics.overview.totalJobs}
+            value={analytics.summary.totalJobs}
             icon={<BriefcaseIcon className="w-6 h-6" />}
             iconBgColor="bg-gradient-to-br from-blue-400 to-blue-600"
           />
           <StatCard
             title="Active Jobs"
-            value={analytics.overview.activeJobs}
-            icon={<SparklesIcon className="w-6 h-6" />}
+            value={analytics.summary.activeJobs}
+            icon={<TargetIcon className="w-6 h-6" />}
             iconBgColor="bg-gradient-to-br from-green-400 to-green-600"
           />
           <StatCard
             title="Applications"
-            value={analytics.overview.totalApplications}
+            value={analytics.summary.totalApplications}
             icon={<FileTextIcon className="w-6 h-6" />}
             iconBgColor="bg-gradient-to-br from-purple-400 to-purple-600"
           />
           <StatCard
             title="Avg Match Score"
-            value={`${analytics.overview.avgScore}%`}
-            icon={<TargetIcon className="w-6 h-6" />}
+            value={`${analytics.summary.avgMatchScore}%`}
+            icon={<SparklesIcon className="w-6 h-6" />}
             iconBgColor="bg-gradient-to-br from-orange-400 to-orange-600"
           />
           <StatCard
             title="Apps per Job"
-            value={analytics.overview.conversionRate}
+            value={analytics.summary.appsPerJob}
             icon={<BarChart3Icon className="w-6 h-6" />}
-            iconBgColor="bg-gradient-to-br from-pink-400 to-pink-600"
+            iconBgColor="bg-gradient-to-br from-indigo-400 to-indigo-600"
           />
         </div>
 
-        {/* Charts Row */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Application Trends */}
-          <div className="bg-white rounded-xl p-6 shadow-sm">
-            <div className="flex items-center mb-6">
-              <TrendingUpIcon className="w-5 h-5 text-blue-600 mr-2" />
-              <h3 className="text-lg font-bold text-gray-900">Application Trends</h3>
-            </div>
-            <div className="space-y-3">
-              {analytics.applicationTrends.map((trend: any, idx: number) => (
-                <div key={idx} className="flex items-center">
-                  <span className="text-sm text-gray-600 w-12">{trend.month}</span>
-                  <div className="flex-1 bg-gray-200 rounded-full h-8 relative overflow-hidden">
-                    <div
-                      className="bg-gradient-to-r from-blue-500 to-blue-600 h-8 rounded-full flex items-center justify-end pr-3 transition-all duration-500"
-                      style={{ width: `${(trend.applications / 30) * 100}%` }}
-                    >
-                      <span className="text-xs font-semibold text-white">
-                        {trend.applications}
-                      </span>
-                    </div>
+        {/* Application Trends */}
+        <div className="bg-white rounded-xl shadow-sm p-6">
+          <h2 className="text-lg font-bold text-gray-900 mb-4 flex items-center">
+            <TrendingUpIcon className="w-5 h-5 mr-2" />
+            Application Trends (Monthly Data)
+          </h2>
+          <div className="h-64">
+            <div className="flex items-end justify-between h-full space-x-2">
+              {analytics.trends.map((trend, index) => (
+                <div key={trend.month} className="flex-1 flex flex-col items-center">
+                  <div 
+                    className="w-full bg-blue-500 rounded-t transition-all duration-300 hover:bg-blue-600"
+                    style={{ 
+                      height: `${Math.max((trend.count / Math.max(...analytics.trends.map(t => t.count))) * 100, 5)}%` 
+                    }}
+                  />
+                  <div className="text-xs text-gray-600 mt-2 font-medium">
+                    {trend.month}
+                  </div>
+                  <div className="text-sm font-bold text-gray-900">
+                    {trend.count}
                   </div>
                 </div>
               ))}
             </div>
           </div>
+        </div>
 
-          {/* Scoring Distribution */}
-          <div className="bg-white rounded-xl p-6 shadow-sm">
-            <div className="flex items-center mb-6">
-              <AwardIcon className="w-5 h-5 text-purple-600 mr-2" />
-              <h3 className="text-lg font-bold text-gray-900">Score Distribution</h3>
+        {/* Score Distribution */}
+        <div className="bg-white rounded-xl shadow-sm p-6">
+          <h2 className="text-lg font-bold text-gray-900 mb-4 flex items-center">
+            <PieChartIcon className="w-5 h-5 mr-2" />
+            Score Distribution
+          </h2>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="text-center">
+              <div className="text-2xl font-bold text-green-600">{analytics.scoreDistribution.high}</div>
+              <div className="text-sm text-gray-600">High Scores (80–100%)</div>
+              <div className="text-xs text-gray-500 mt-1">{highScorePercentage}% of total</div>
             </div>
-            <div className="space-y-4">
-              <div className="flex items-center justify-between p-4 bg-green-50 rounded-lg">
-                <div>
-                  <p className="text-sm font-medium text-gray-700">High Scores (80-100%)</p>
-                  <p className="text-xs text-gray-500">Excellent matches</p>
-                </div>
-                <div className="text-3xl font-bold text-green-600">
-                  {analytics.scoringInsights.highScorers}
-                </div>
-              </div>
-              <div className="flex items-center justify-between p-4 bg-blue-50 rounded-lg">
-                <div>
-                  <p className="text-sm font-medium text-gray-700">Medium Scores (60-79%)</p>
-                  <p className="text-xs text-gray-500">Good potential</p>
-                </div>
-                <div className="text-3xl font-bold text-blue-600">
-                  {analytics.scoringInsights.mediumScorers}
-                </div>
-              </div>
-              <div className="flex items-center justify-between p-4 bg-orange-50 rounded-lg">
-                <div>
-                  <p className="text-sm font-medium text-gray-700">Low Scores (0-59%)</p>
-                  <p className="text-xs text-gray-500">Needs improvement</p>
-                </div>
-                <div className="text-3xl font-bold text-orange-600">
-                  {analytics.scoringInsights.lowScorers}
-                </div>
-              </div>
+            <div className="text-center">
+              <div className="text-2xl font-bold text-yellow-600">{analytics.scoreDistribution.medium}</div>
+              <div className="text-sm text-gray-600">Medium Scores (60–79%)</div>
+              <div className="text-xs text-gray-500 mt-1">{mediumScorePercentage}% of total</div>
+            </div>
+            <div className="text-center">
+              <div className="text-2xl font-bold text-red-600">{analytics.scoreDistribution.low}</div>
+              <div className="text-sm text-gray-600">Low Scores (0–59%)</div>
+              <div className="text-xs text-gray-500 mt-1">{lowScorePercentage}% of total</div>
             </div>
           </div>
         </div>
 
-        {/* Job Performance */}
-        <div className="bg-white rounded-xl p-6 shadow-sm">
-          <div className="flex items-center mb-6">
-            <BriefcaseIcon className="w-5 h-5 text-blue-600 mr-2" />
-            <h3 className="text-lg font-bold text-gray-900">Top Performing Jobs</h3>
-          </div>
-          <div className="space-y-4">
-            {analytics.jobPerformance.length === 0 ? (
-              <p className="text-gray-500 text-center py-8">No job data available</p>
-            ) : (
-              analytics.jobPerformance.map((job: any, idx: number) => (
-                <div key={idx} className="flex items-center justify-between p-4 border border-gray-200 rounded-lg hover:border-blue-300 transition-colors">
-                  <div className="flex-1">
-                    <div className="flex items-center space-x-3">
-                      <span className="text-2xl font-bold text-gray-300">#{idx + 1}</span>
-                      <div>
-                        <h4 className="font-semibold text-gray-900">{job.jobTitle}</h4>
-                        <p className="text-sm text-gray-500">
-                          {job.applications} applications • Avg score: {job.avgScore}%
-                        </p>
+        {/* Top Performing Jobs */}
+        <div className="bg-white rounded-xl shadow-sm p-6">
+          <h2 className="text-lg font-bold text-gray-900 mb-4 flex items-center">
+            <AwardIcon className="w-5 h-5 mr-2" />
+            Top Performing Jobs
+          </h2>
+          {analytics.topJobs.length > 0 ? (
+            <div className="space-y-3">
+              {analytics.topJobs.map((job, index) => (
+                <div key={job.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                  <div className="flex items-center space-x-3">
+                    <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
+                      <span className="text-blue-600 font-bold text-sm">{index + 1}</span>
+                    </div>
+                    <div>
+                      <div className="font-medium text-gray-900">{job.title}</div>
+                      <div className="text-sm text-gray-600">
+                        {job.application_count} applications • Avg score: {
+                          job.avg_score && job.avg_score !== null && !isNaN(Number(job.avg_score)) 
+                            ? Number(job.avg_score).toFixed(1) 
+                            : 'N/A'
+                        }%
                       </div>
                     </div>
                   </div>
-                  <div className="flex items-center space-x-4">
-                    <div className="text-right">
-                      <div className="text-2xl font-bold text-blue-600">{job.applications}</div>
-                      <div className="text-xs text-gray-500">applicants</div>
-                    </div>
-                    <span
-                      className={`px-3 py-1 rounded-full text-xs font-semibold ${
-                        job.status === 'published'
-                          ? 'bg-green-100 text-green-700'
-                          : 'bg-gray-100 text-gray-700'
-                      }`}
-                    >
-                      {job.status}
-                    </span>
+                  <div className="text-lg font-bold text-blue-600">
+                    #{job.application_count}
                   </div>
                 </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-8 text-gray-500">
+              No job data available
+            </div>
+          )}
+        </div>
+
+        {/* Most Common Skills */}
+        <div className="bg-white rounded-xl shadow-sm p-6">
+          <h2 className="text-lg font-bold text-gray-900 mb-4 flex items-center">
+            <UsersIcon className="w-5 h-5 mr-2" />
+            Most Common Skills
+          </h2>
+          {analytics.commonSkills.length > 0 ? (
+            <div className="space-y-2">
+              {analytics.commonSkills.map((skill, index) => (
+                <div key={skill.skill_name} className="flex items-center justify-between p-2 bg-gray-50 rounded">
+                  <div className="flex items-center space-x-3">
+                    <div className="w-6 h-6 bg-purple-100 rounded-full flex items-center justify-center">
+                      <span className="text-purple-600 font-bold text-xs">{index + 1}</span>
+                    </div>
+                    <span className="font-medium text-gray-900">{skill.skill_name}</span>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <div className="text-lg font-bold text-purple-600">{skill.count}</div>
+                    <div className="text-sm text-gray-600">candidates</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-8 text-gray-500">
+              No skill data available
+            </div>
+          )}
+        </div>
+
+        {/* Quick Insights */}
+        <div className="bg-white rounded-xl shadow-sm p-6">
+          <h2 className="text-lg font-bold text-gray-900 mb-4 flex items-center">
+            <LightbulbIcon className="w-5 h-5 mr-2" />
+            Quick Insights
+          </h2>
+          <div className="space-y-3">
+            {analytics.insights.length > 0 ? (
+              analytics.insights.map((insight, index) => (
+                <div 
+                  key={index}
+                  className={`p-3 rounded-lg border-l-4 ${
+                    insight.type === 'success' ? 'bg-green-50 border-green-400 text-green-800' :
+                    insight.type === 'warning' ? 'bg-yellow-50 border-yellow-400 text-yellow-800' :
+                    'bg-blue-50 border-blue-400 text-blue-800'
+                  }`}
+                >
+                  <div className="font-medium">{insight.message}</div>
+                </div>
               ))
-            )}
-          </div>
-        </div>
-
-        {/* Top Skills */}
-        <div className="bg-white rounded-xl p-6 shadow-sm">
-          <div className="flex items-center mb-6">
-            <UsersIcon className="w-5 h-5 text-green-600 mr-2" />
-            <h3 className="text-lg font-bold text-gray-900">Most Common Skills</h3>
-          </div>
-          <div className="flex flex-wrap gap-3">
-            {analytics.topSkills.map((item: any, idx: number) => (
-              <div
-                key={idx}
-                className="px-4 py-2 bg-gradient-to-r from-blue-50 to-purple-50 border border-blue-200 rounded-lg"
-              >
-                <span className="font-semibold text-gray-900">{item.skill}</span>
-                <span className="ml-2 text-sm text-gray-600">({item.count})</span>
+            ) : (
+              <div className="text-center py-4 text-gray-500">
+                No insights available at this time
               </div>
-            ))}
-            {analytics.topSkills.length === 0 && (
-              <p className="text-gray-500">No skill data available</p>
             )}
           </div>
         </div>
 
-        {/* Insights Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div className="bg-gradient-to-br from-blue-500 to-blue-600 text-white rounded-xl p-6 shadow-lg">
-            <LightbulbIcon className="w-8 h-8 mb-3" />
-            <h4 className="font-bold text-lg mb-2">Quick Insight</h4>
-            <p className="text-sm text-white/90">
-              Your average match score is {analytics.overview.avgScore}%. 
-              {analytics.overview.avgScore >= 70 
-                ? " Great job finding quality candidates!"
-                : " Consider refining job requirements."}
-            </p>
+        {/* Success Rate and Growth */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="bg-white rounded-xl shadow-sm p-6">
+            <h2 className="text-lg font-bold text-gray-900 mb-4">Success Rate</h2>
+            <div className="text-center">
+              <div className="text-3xl font-bold text-green-600">{analytics.successRate}%</div>
+              <div className="text-sm text-gray-600 mt-2">
+                Shortlisted candidates ÷ Total applications × 100
+              </div>
+            </div>
           </div>
-
-          <div className="bg-gradient-to-br from-green-500 to-green-600 text-white rounded-xl p-6 shadow-lg">
-            <TargetIcon className="w-8 h-8 mb-3" />
-            <h4 className="font-bold text-lg mb-2">Success Rate</h4>
-            <p className="text-sm text-white/90">
-              {analytics.overview.totalApplications > 0 
-                ? `${((analytics.scoringInsights.highScorers / analytics.overview.totalApplications) * 100).toFixed(1)}% of candidates scored above 80%, indicating strong matches.`
-                : 'No applications yet to calculate success rate.'}
-            </p>
-          </div>
-
-          <div className="bg-gradient-to-br from-purple-500 to-purple-600 text-white rounded-xl p-6 shadow-lg">
-            <TrendingUpIcon className="w-8 h-8 mb-3" />
-            <h4 className="font-bold text-lg mb-2">Growth</h4>
-            <p className="text-sm text-white/90">
-              You're averaging {analytics.overview.conversionRate} applications per job. 
-              Keep posting quality positions!
-            </p>
+          <div className="bg-white rounded-xl shadow-sm p-6">
+            <h2 className="text-lg font-bold text-gray-900 mb-4">Growth</h2>
+            <div className="text-center">
+              <div className={`text-3xl font-bold ${
+                analytics.growth > 0 ? 'text-green-600' : 
+                analytics.growth < 0 ? 'text-red-600' : 'text-gray-600'
+              }`}>
+                {analytics.growth > 0 ? '+' : ''}{analytics.growth}%
+              </div>
+              <div className="text-sm text-gray-600 mt-2">
+                Change in applications compared to previous month
+              </div>
+            </div>
           </div>
         </div>
-      </div>
-    </Layout>
-  );
+    </div>
+  </Layout>
+);
 }
