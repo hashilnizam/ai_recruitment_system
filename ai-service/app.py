@@ -429,7 +429,6 @@ def process_ranking(job_id):
                     db.execute_query(ranking_query, (
                         job_id, 
                         application['candidate_id'],  # This is the resume ID
-                        None,  # No application_id for uploaded resumes
                         skill_score,
                         education_score,
                         experience_score,
@@ -463,24 +462,44 @@ def process_ranking(job_id):
                     ))
                 
                 # Store feedback
-                # For both resume uploads and regular applications, use application_id
-                feedback_query = """
-                INSERT INTO feedback 
-                (application_id, strengths, missing_skills, suggestions, overall_assessment)
-                VALUES (%s, %s, %s, %s, %s)
-                ON DUPLICATE KEY UPDATE
-                strengths = VALUES(strengths),
-                missing_skills = VALUES(missing_skills),
-                suggestions = VALUES(suggestions),
-                overall_assessment = VALUES(overall_assessment)
-                """
-                db.execute_query(feedback_query, (
-                    application['id'],
-                    feedback['strengths'],
-                    feedback['missing_skills'],
-                    feedback['suggestions'],
-                    feedback['overall_assessment']
-                ))
+                if application.get('is_resume_upload'):
+                    # For resume uploads, use candidate_id instead of application_id since there's no application record
+                    feedback_query = """
+                    INSERT INTO feedback 
+                    (candidate_id, strengths, missing_skills, suggestions, overall_assessment)
+                    VALUES (%s, %s, %s, %s, %s)
+                    ON DUPLICATE KEY UPDATE
+                    strengths = VALUES(strengths),
+                    missing_skills = VALUES(missing_skills),
+                    suggestions = VALUES(suggestions),
+                    overall_assessment = VALUES(overall_assessment)
+                    """
+                    db.execute_query(feedback_query, (
+                        application['candidate_id'],  # Use candidate_id for resume uploads
+                        feedback.get('strengths', ''),
+                        feedback.get('missing_skills', ''),
+                        feedback.get('suggestions', ''),
+                        feedback.get('overall_assessment', '')
+                    ))
+                else:
+                    # For regular applications, use application_id
+                    feedback_query = """
+                    INSERT INTO feedback 
+                    (application_id, strengths, missing_skills, suggestions, overall_assessment)
+                    VALUES (%s, %s, %s, %s, %s)
+                    ON DUPLICATE KEY UPDATE
+                    strengths = VALUES(strengths),
+                    missing_skills = VALUES(missing_skills),
+                    suggestions = VALUES(suggestions),
+                    overall_assessment = VALUES(overall_assessment)
+                    """
+                    db.execute_query(feedback_query, (
+                        application['id'],
+                        feedback.get('strengths', ''),
+                        feedback.get('missing_skills', ''),
+                        feedback.get('suggestions', ''),
+                        feedback.get('overall_assessment', '')
+                    ))
                 
                 rankings.append({
                     'application_id': application['id'],

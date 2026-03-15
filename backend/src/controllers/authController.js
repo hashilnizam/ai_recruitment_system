@@ -211,6 +211,11 @@ const login = async (req, res) => {
  */
 const getProfile = async (req, res) => {
   try {
+    // Add cache-busting headers
+    res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.set('Pragma', 'no-cache');
+    res.set('Expires', '0');
+
     const users = await db.query(
       `SELECT id, email, first_name, last_name, role, company_name, phone, created_at
        FROM users WHERE id = ?`,

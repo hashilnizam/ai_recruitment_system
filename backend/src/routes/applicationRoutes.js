@@ -220,29 +220,61 @@ router.post('/submit', authenticateToken, requireCandidate, upload.single('resum
     // Use AI to enhance the extracted data
     console.log('🤖 Enhancing data with AI...');
     let aiEnhancedData = null;
+    
+    // Check if AI service is available before attempting enhancement
+    let aiServiceAvailable = false;
     try {
-      const aiResponse = await axios.post('http://localhost:5001/api/enhance-application-data', {
-        resume_data: resumeData,
-        job_requirements: {
-          required_skills: JSON.parse(job.required_skills || '[]'),
-          required_education: JSON.parse(job.required_education || '[]'),
-          required_experience: JSON.parse(job.required_experience || '{}')
+      const healthCheck = await axios.get('http://localhost:5001/health', { timeout: 5000 });
+      aiServiceAvailable = healthCheck.data.success;
+      console.log('🤖 AI service health check:', aiServiceAvailable ? 'Available' : 'Unavailable');
+    } catch (healthError) {
+      console.log('⚠️ AI service health check failed:', healthError.message);
+      aiServiceAvailable = false;
+    }
+    
+    if (aiServiceAvailable) {
+      try {
+        const aiResponse = await axios.post('http://localhost:5001/api/enhance-application-data', {
+          resume_data: resumeData,
+          job_requirements: {
+            required_skills: JSON.parse(job.required_skills || '[]'),
+            required_education: JSON.parse(job.required_education || '[]'),
+            required_experience: JSON.parse(job.required_experience || '{}')
+          }
+        }, {
+          timeout: 45000 // Increased from 25000 to 45000ms for better AI processing
+        });
+        
+        if (aiResponse.data.success) {
+          aiEnhancedData = aiResponse.data.data;
+          console.log('✅ AI enhancement completed');
+          console.log(`📊 Match score: ${aiEnhancedData.match_score}%`);
         }
-      }, {
-        timeout: 25000 // Increased from 15000 to 25000ms for better AI processing
-      });
-      
-      if (aiResponse.data.success) {
-        aiEnhancedData = aiResponse.data.data;
-        console.log('✅ AI enhancement completed');
-        console.log(`📊 Match score: ${aiEnhancedData.match_score}%`);
+      } catch (aiError) {
+        console.warn('⚠️ AI enhancement failed, using parsed data:', aiError.message);
+        
+        // Check if it's a timeout error
+        if (aiError.code === 'ECONNABORTED' || aiError.message.includes('timeout')) {
+          console.log('⏱️ AI service timeout - using fallback scoring');
+          aiEnhancedData = {
+            match_score: 70, // Conservative default score for timeout
+            enhanced_data: resumeData,
+            timeout: true
+          };
+        } else {
+          // Use parsed data directly if AI enhancement fails for other reasons
+          aiEnhancedData = {
+            match_score: 75, // Default match score
+            enhanced_data: resumeData
+          };
+        }
       }
-    } catch (aiError) {
-      console.warn('⚠️ AI enhancement failed, using parsed data:', aiError.message);
-      // Use parsed data directly if AI enhancement fails
+    } else {
+      console.log('🔄 AI service unavailable - using local scoring only');
       aiEnhancedData = {
-        match_score: 75, // Default match score
-        enhanced_data: resumeData
+        match_score: 72, // Slightly lower score for no AI enhancement
+        enhanced_data: resumeData,
+        ai_unavailable: true
       };
     }
 
@@ -351,11 +383,23 @@ router.post('/submit', authenticateToken, requireCandidate, upload.single('resum
     console.log('✅ Score calculated:', scoreResult.totalScore);
 
     // Store scoring results
+    // Validate and handle NaN values
+    const skillScore = isNaN(scoreResult.breakdown.skills.score) ? 0 : scoreResult.breakdown.skills.score;
+    const educationScore = isNaN(scoreResult.breakdown.education.score) ? 0 : scoreResult.breakdown.education.score;
+    const experienceScore = isNaN(scoreResult.breakdown.experience.score) ? 0 : scoreResult.breakdown.experience.score;
+    const totalScore = isNaN(scoreResult.totalScore) ? 0 : scoreResult.totalScore;
+    
+    console.log('📊 Final scores (NaN-safe):', {
+      skillScore,
+      educationScore,
+      experienceScore,
+      totalScore
+    });
+    
     await db.query(
       `INSERT INTO rankings (application_id, job_id, skill_score, education_score, experience_score, total_score, rank_position, score_breakdown)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      [applicationId, jobId, scoreResult.breakdown.skills.score, scoreResult.breakdown.education.score,
-       scoreResult.breakdown.experience.score, scoreResult.totalScore, 1, JSON.stringify(scoreResult)]
+      [applicationId, jobId, skillScore, educationScore, experienceScore, totalScore, 1, JSON.stringify(scoreResult)]
     );
 
     // Store resume data for future reference (skip if column doesn't exist)
@@ -380,26 +424,18 @@ router.post('/submit', authenticateToken, requireCandidate, upload.single('resum
        JSON.stringify(feedback.suggestions), feedback.overallAssessment]
     );
 
-    // Update job application count
-    await db.query(
-      'UPDATE jobs SET application_count = application_count + 1 WHERE id = ?',
-      [jobId]
-    );
-
-    console.log('✅ Application submission completed successfully');
-
     // Send real-time notification to recruiter
-    socketHandler.notifyRecruiter(job.recruiter_id, {
-      type: 'new_application',
-      data: {
-        applicationId,
-        jobId,
-        candidateName: resumeData.personalInfo.name || 'Candidate',
-        jobTitle: job.title,
-        score: scoreResult.totalScore,
-        submittedAt: new Date().toISOString()
-      }
-    });
+    try {
+      socketHandler.notifyRecruiter(job.recruiter_id, {
+        type: 'new_application',
+        message: `New application received for ${job.title}`,
+        applicationId: applicationId,
+        candidateName: `${resumeData.personal_info.first_name} ${resumeData.personal_info.last_name}`
+      });
+    } catch (socketError) {
+      console.log('⚠️ Could not send real-time notification:', socketError.message);
+      // Continue without failing the application submission
+    }
 
     // Send confirmation email to candidate
     try {

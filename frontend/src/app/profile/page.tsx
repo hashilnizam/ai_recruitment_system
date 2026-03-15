@@ -13,7 +13,8 @@ import {
   BriefcaseIcon,
   CalendarIcon,
   EditIcon,
-  SaveIcon
+  SaveIcon,
+  RefreshCw
 } from '@/components/Icons';
 import toast from 'react-hot-toast';
 
@@ -33,23 +34,45 @@ export default function ProfilePage() {
   });
 
   useEffect(() => {
+    console.log('🚀 Profile page useEffect triggered');
+    console.log('👤 Auth user:', user);
+    console.log('⏳ Auth loading:', authLoading);
+    
     // Don't redirect while auth is loading
     if (authLoading) return;
     
     if (!user) {
+      console.log('🔄 Redirecting to login - no user found');
       router.push('/auth/login');
       return;
     }
 
+    console.log('✅ User authenticated, fetching profile...');
     fetchProfile();
   }, [user, router, authLoading]);
+
+  // Refresh profile data when user returns to the tab
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (!document.hidden && user) {
+        fetchProfile();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, [user]);
 
   const fetchProfile = async () => {
     try {
       setLoading(true);
+      console.log('🔍 Fetching profile data...');
       const response = await authAPI.getProfile();
-      if (response.data.success) {
-        const userData = response.data.data;
+      console.log('📄 Profile API response:', response);
+      
+      if (response.success) {
+        const userData = response.data;
+        console.log('👤 User data received:', userData);
         setProfileData({
           firstName: userData.firstName || '',
           lastName: userData.lastName || '',
@@ -58,9 +81,12 @@ export default function ProfilePage() {
           email: userData.email || '',
           createdAt: userData.createdAt || ''
         });
+        console.log('✅ Profile data set successfully');
+      } else {
+        console.error('❌ Profile API returned success:false');
       }
     } catch (error) {
-      console.error('Error fetching profile:', error);
+      console.error('❌ Error fetching profile:', error);
       toast.error('Failed to fetch profile');
     } finally {
       setLoading(false);
@@ -91,23 +117,30 @@ export default function ProfilePage() {
       const response = await authAPI.updateProfile({
         firstName: profileData.firstName,
         lastName: profileData.lastName,
-        companyName: profileData.companyName,
-        phone: profileData.phone
+        companyName: profileData.companyName || undefined,
+        phone: profileData.phone || undefined
       });
 
-      if (response.data.success) {
+      if (response.success) {
         toast.success('Profile updated successfully!');
         setEditing(false);
         
-        // Update user context
-        const updatedUser = {
-          ...user,
-          firstName: profileData.firstName,
-          lastName: profileData.lastName,
-          companyName: profileData.companyName,
-          phone: profileData.phone
-        };
-        localStorage.setItem('user', JSON.stringify(updatedUser));
+        // Refresh profile data from server to ensure we have the latest data
+        await fetchProfile();
+        
+        // Update user context with fresh data
+        const freshProfileResponse = await authAPI.getProfile();
+        if (freshProfileResponse.success) {
+          const freshUserData = freshProfileResponse.data;
+          const updatedUser = {
+            ...user,
+            firstName: freshUserData.firstName,
+            lastName: freshUserData.lastName,
+            companyName: freshUserData.companyName,
+            phone: freshUserData.phone
+          };
+          localStorage.setItem('user', JSON.stringify(updatedUser));
+        }
       }
     } catch (error) {
       console.error('Error updating profile:', error);
@@ -123,12 +156,15 @@ export default function ProfilePage() {
   };
 
   if (authLoading || loading) {
+    console.log('⏳ Still loading - authLoading:', authLoading, 'loading:', loading);
     return (
       <Layout>
         <LoadingSpinner text="Loading profile..." />
       </Layout>
     );
   }
+
+  console.log('🎨 Rendering profile page with data:', profileData);
 
   return (
     <Layout>
@@ -139,15 +175,25 @@ export default function ProfilePage() {
             <h1 className="text-3xl font-bold text-gray-900">Profile</h1>
             <p className="text-gray-600">Manage your account information</p>
           </div>
-          {!editing && (
+          <div className="flex items-center space-x-3">
             <button
-              onClick={() => setEditing(true)}
-              className="flex items-center space-x-2 bg-blue-500 text-white px-4 py-2 rounded-lg font-medium hover:bg-blue-600 transition-colors"
+              onClick={fetchProfile}
+              disabled={loading}
+              className="flex items-center space-x-2 bg-gray-500 text-white px-4 py-2 rounded-lg font-medium hover:bg-gray-600 transition-colors disabled:opacity-50"
             >
-              <EditIcon size={16} />
-              <span>Edit Profile</span>
+              <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
+              <span>{loading ? 'Refreshing...' : 'Refresh'}</span>
             </button>
-          )}
+            {!editing && (
+              <button
+                onClick={() => setEditing(true)}
+                className="flex items-center space-x-2 bg-blue-500 text-white px-4 py-2 rounded-lg font-medium hover:bg-blue-600 transition-colors"
+              >
+                <EditIcon size={16} />
+                <span>Edit Profile</span>
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Profile Card */}

@@ -49,7 +49,17 @@ router.put('/profile',
   [
     body('firstName').notEmpty().withMessage('First name is required'),
     body('lastName').notEmpty().withMessage('Last name is required'),
-    body('companyName').optional().notEmpty().withMessage('Company name cannot be empty'),
+    body('companyName').custom((value) => {
+      // Allow undefined, null, or empty string
+      if (value === undefined || value === null || value === '') {
+        return true;
+      }
+      // If provided, must not be just whitespace
+      if (typeof value === 'string' && value.trim().length > 0) {
+        return true;
+      }
+      throw new Error('Company name cannot be empty');
+    }),
     body('phone').optional().isMobilePhone().withMessage('Please provide a valid phone number')
   ],
   validate,

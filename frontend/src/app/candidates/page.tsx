@@ -20,7 +20,8 @@ import {
   TrophyIcon,
   FileTextIcon,
   EyeIcon,
-  BrainIcon
+  BrainIcon,
+  SquareIcon
 } from 'lucide-react';
 
 export default function CandidatesPage() {
@@ -38,6 +39,8 @@ export default function CandidatesPage() {
   const [topRankedCandidates, setTopRankedCandidates] = useState<any[]>([]);
   const [rankingSuccess, setRankingSuccess] = useState(false);
   const [rankingMessage, setRankingMessage] = useState('');
+  const [rankingProgress, setRankingProgress] = useState(0);
+  const [currentRankingJob, setCurrentRankingJob] = useState<number | null>(null);
 
   useEffect(() => {
     // Don't redirect while auth is loading
@@ -92,7 +95,10 @@ export default function CandidatesPage() {
 
   const triggerAIRanking = async () => {
     try {
+      console.log('🚀 Starting AI ranking...');
       setRankingInProgress(true);
+      setRankingProgress(0);
+      console.log('✅ rankingInProgress set to true');
       
       // Use the recruiter API client which includes authentication
       const response = await recruiterAPI.triggerRanking();
@@ -105,14 +111,21 @@ export default function CandidatesPage() {
         const applicationsCount = result.applications_to_rank || result.data?.applications_to_rank || 1;
         setRankingMessage(`AI ranking started for ${applicationsCount} candidates`);
         setRankingSuccess(true);
+        console.log('✅ Ranking message set, starting polling...');
         
-        // Start polling for updates
+        // Start polling for updates with progress tracking
         let pollCount = 0;
-        const maxPolls = 12; // 1 minute max (12 * 5 seconds)
+        const maxPolls = 30; // 5 minutes max (30 * 10 seconds)
         
         const pollInterval = setInterval(async () => {
           pollCount++;
           console.log(`Poll ${pollCount}: Checking for ranking updates...`);
+          
+          // Simulate progress (since we don't have real-time progress from backend)
+          const estimatedProgress = Math.min(Math.round((pollCount / maxPolls) * 100), 95);
+          setRankingProgress(estimatedProgress);
+          console.log(`📊 Progress updated to: ${estimatedProgress}%`);
+          
           await fetchData();
           
           // Get fresh candidates data and check if any have rankings
@@ -125,6 +138,7 @@ export default function CandidatesPage() {
           
           if (rankedCandidates.length > 0 || pollCount >= maxPolls) {
             clearInterval(pollInterval);
+            setRankingProgress(100);
             setRankingInProgress(false);
             await fetchData(); // Final refresh
             
@@ -138,17 +152,38 @@ export default function CandidatesPage() {
             setTimeout(() => {
               setRankingSuccess(false);
               setRankingMessage('');
+              setRankingProgress(0);
             }, 5000);
           }
-        }, 10000); // Changed to 10 seconds instead of 5
+        }, 10000); // 10 seconds polling
         
       } else {
         console.error('Failed to trigger AI ranking:', response?.message || 'Unknown error');
         setRankingInProgress(false);
+        setRankingProgress(0);
       }
     } catch (error) {
       console.error('Error triggering AI ranking:', error);
       setRankingInProgress(false);
+      setRankingProgress(0);
+    }
+  };
+
+  const stopAIRanking = async () => {
+    try {
+      setRankingInProgress(false);
+      // Use the recruiter API client which includes authentication
+      const response = await recruiterAPI.stopRanking();
+      
+      console.log('AI ranking stopped:', response);
+      
+      if (response?.success) {
+        setRankingMessage('AI ranking stopped');
+      } else {
+        console.error('Failed to stop AI ranking:', response?.message || 'Unknown error');
+      }
+    } catch (error) {
+      console.error('Error stopping AI ranking:', error);
     }
   };
 
@@ -452,6 +487,15 @@ export default function CandidatesPage() {
                 <BrainIcon className={`w-4 h-4 mr-2 ${rankingInProgress ? 'animate-pulse' : ''}`} />
                 {rankingInProgress ? 'AI Ranking...' : 'AI Ranking'}
               </button>
+              {rankingInProgress && (
+                <button
+                  onClick={stopAIRanking}
+                  className="flex items-center px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+                >
+                  <SquareIcon className="w-4 h-4 mr-2" />
+                  Stop
+                </button>
+              )}
               <button
                 onClick={() => router.push('/candidates/ranking-results')}
                 className="flex items-center px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
@@ -470,7 +514,65 @@ export default function CandidatesPage() {
           </div>
         </div>
 
-        {/* Success Message */}
+        {/* Debug Info - Remove later */}
+        {process.env.NODE_ENV === 'development' && (
+          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 mb-4 text-xs">
+            <div className="flex items-center justify-between">
+              <span>Debug: rankingInProgress={rankingInProgress.toString()}, progress={rankingProgress}%</span>
+              <button
+                onClick={() => {
+                  console.log('🔧 Manual state check:', { rankingInProgress, rankingProgress, rankingSuccess });
+                }}
+                className="px-2 py-1 bg-yellow-600 text-white rounded text-xs"
+              >
+                Check State
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* AI Ranking Progress */}
+        {rankingInProgress && (
+          <>
+            {console.log('🎨 Rendering AI Ranking Progress - rankingInProgress:', rankingInProgress, 'Progress:', rankingProgress)}
+            <div className="bg-gradient-to-r from-purple-50 to-blue-50 rounded-xl p-6 mb-6 border border-purple-200">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center">
+                  <div className="w-3 h-3 bg-purple-600 rounded-full mr-3 animate-pulse"></div>
+                  <h3 className="text-lg font-semibold text-gray-900">AI Ranking in Progress</h3>
+                </div>
+                <button
+                  onClick={stopAIRanking}
+                  className="flex items-center px-3 py-1 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-sm"
+                >
+                  <SquareIcon className="w-4 h-4 mr-1" />
+                  Stop
+                </button>
+              </div>
+              
+              <div className="space-y-3">
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-gray-600">Processing candidates...</span>
+                  <span className="font-medium text-purple-600">{rankingProgress}%</span>
+                </div>
+                
+                <div className="w-full bg-gray-200 rounded-full h-3">
+                  <div 
+                    className="bg-gradient-to-r from-purple-600 to-blue-600 h-3 rounded-full transition-all duration-500 ease-out"
+                    style={{ width: `${rankingProgress}%` }}
+                  >
+                    <div className="h-full bg-white bg-opacity-30 rounded-full animate-pulse"></div>
+                  </div>
+                </div>
+                
+                <div className="flex items-center justify-center space-x-2 text-xs text-gray-500">
+                  <BrainIcon className="w-4 h-4 animate-pulse" />
+                  <span>AI is analyzing resumes and calculating scores...</span>
+                </div>
+              </div>
+            </div>
+          </>
+        )}
         {rankingSuccess && (
           <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-6">
             <div className="flex items-center justify-between">

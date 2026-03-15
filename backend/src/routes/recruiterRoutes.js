@@ -718,4 +718,29 @@ router.get('/resumes/download/:id', asyncHandler(async (req, res) => {
   }
 }));
 
+// Stop AI ranking
+router.post('/stop-ranking', authenticateToken, asyncHandler(async (req, res) => {
+  try {
+    const recruiterId = req.user.id;
+    
+    // Update processing status to stopped for this recruiter
+    db.query(
+      'UPDATE processing_jobs SET status = "stopped", completed_at = NOW() WHERE recruiter_id = ? AND status = "processing"',
+      [recruiterId]
+    );
+    
+    res.json({
+      success: true,
+      message: 'AI ranking stopped successfully'
+    });
+    
+  } catch (error) {
+    console.error('Error stopping AI ranking:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to stop AI ranking'
+    });
+  }
+}));
+
 module.exports = router;

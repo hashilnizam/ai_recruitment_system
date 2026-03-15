@@ -26,7 +26,8 @@ class AdvancedScoringAlgorithm {
 
       // Calculate weighted total score
       const totalScore = Object.entries(scores).reduce((total, [key, score]) => {
-        return total + (score.score * this.weights[key]);
+        const scoreValue = isNaN(score.score) ? 0 : score.score;
+        return total + (scoreValue * this.weights[key]);
       }, 0);
 
       const result = {
@@ -69,6 +70,14 @@ class AdvancedScoringAlgorithm {
       console.log('📋 Applicant skills:', applicantSkills.length);
       console.log('📋 Required skills:', requiredSkills.length);
 
+      // If no required skills (e.g., Direct Resume Upload), give average score based on applicant's skills
+      if (requiredSkills.length === 0) {
+        score.score = Math.min(applicantSkills.length * 5, 30); // 5 points per skill, max 30
+        score.details.skillRelevance = 75; // Default relevance
+        console.log('📊 No required skills - using applicant skill count:', score.score);
+        return score;
+      }
+
       // Calculate skill relevance
       const relevance = this.skillDB.calculateSkillRelevance(applicantSkills, requiredSkills);
       score.details.matchedSkills = relevance.matchedSkills;
@@ -86,8 +95,8 @@ class AdvancedScoringAlgorithm {
       score.details.categoryBonus = this.calculateCategoryBonus(relevance.matchedSkills, jobRequirements);
       score.score += score.details.categoryBonus;
 
-      // Ensure score doesn't exceed max
-      score.score = Math.min(score.score, score.maxScore);
+      // Ensure score doesn't exceed max and is not NaN
+      score.score = Math.min(isNaN(score.score) ? 0 : score.score, score.maxScore);
 
       console.log('📊 Skills score:', score.score);
       return score;
@@ -135,7 +144,7 @@ class AdvancedScoringAlgorithm {
 
       // Calculate total experience score
       score.score = yearsScore + score.details.relevanceScore + score.details.levelMatch + score.details.growthBonus;
-      score.score = Math.min(score.score, score.maxScore);
+      score.score = Math.min(isNaN(score.score) ? 0 : score.score, score.maxScore);
 
       console.log('📊 Experience score:', score.score);
       return score;
@@ -183,7 +192,7 @@ class AdvancedScoringAlgorithm {
       // Calculate total education score
       score.score = score.details.educationLevel + score.details.fieldRelevance + 
                    score.details.institutionQuality + score.details.additionalBonus;
-      score.score = Math.min(score.score, score.maxScore);
+      score.score = Math.min(isNaN(score.score) ? 0 : score.score, score.maxScore);
 
       console.log('📊 Education score:', score.score);
       return score;
@@ -231,7 +240,7 @@ class AdvancedScoringAlgorithm {
       // Calculate total projects score
       score.score = score.details.projectCount + score.details.complexityScore + 
                    score.details.relevanceScore + score.details.techAlignment;
-      score.score = Math.min(score.score, score.maxScore);
+      score.score = Math.min(isNaN(score.score) ? 0 : score.score, score.maxScore);
 
       console.log('📊 Projects score:', score.score);
       return score;
@@ -274,7 +283,7 @@ class AdvancedScoringAlgorithm {
 
       // Calculate total certifications score
       score.score = score.details.certificationCount + score.details.relevanceScore + score.details.issuerQuality;
-      score.score = Math.min(score.score, score.maxScore);
+      score.score = Math.min(isNaN(score.score) ? 0 : score.score, score.maxScore);
 
       console.log('📊 Certifications score:', score.score);
       return score;
@@ -492,6 +501,10 @@ class AdvancedScoringAlgorithm {
   }
 
   getPositionLevel(position) {
+    if (!position || typeof position !== 'string') {
+      return 1; // Default level for undefined/invalid positions
+    }
+    
     const positionLower = position.toLowerCase();
     
     if (positionLower.includes('senior') || positionLower.includes('lead') || positionLower.includes('principal')) {

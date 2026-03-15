@@ -11,7 +11,7 @@ class ApiClient {
   constructor() {
     this.client = axios.create({
       baseURL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000',
-      timeout: 30000, // Increased from 10000 to 30000ms (30 seconds) for AI processing
+      timeout: 60000, // Increased from 30000 to 60000ms (60 seconds) for AI processing
       headers: {
         'Content-Type': 'application/json',
       },
@@ -106,7 +106,11 @@ export const authAPI = {
     phone?: string;
   }) => api.post('/api/auth/register', userData),
   
-  getProfile: () => api.get('/api/auth/me'),
+  getProfile: () => {
+    // Add timestamp to prevent caching
+    const timestamp = Date.now();
+    return api.get(`/api/auth/me?t=${timestamp}`);
+  },
   
   updateProfile: (data: {
     firstName: string;
@@ -268,6 +272,11 @@ export const recruiterAPI = {
     window.URL.revokeObjectURL(url);
     
     return response;
+  },
+
+  stopRanking: async () => {
+    const response = await api.post('/api/recruiter/stop-ranking');
+    return response; // Return the full response
   },
 };
 

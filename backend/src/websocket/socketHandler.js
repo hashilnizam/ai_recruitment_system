@@ -217,6 +217,16 @@ class SocketHandler {
     });
   }
 
+  // Send notification to recruiter about new application
+  notifyRecruiter(recruiterId, applicationData) {
+    this.sendToUser(recruiterId, {
+      type: 'new_application',
+      data: applicationData,
+      message: applicationData.message,
+      timestamp: new Date().toISOString()
+    });
+  }
+
   // Get connection statistics
   getStats() {
     const roleStats = {};
