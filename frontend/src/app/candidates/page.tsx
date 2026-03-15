@@ -24,7 +24,7 @@ import {
 } from 'lucide-react';
 
 export default function CandidatesPage() {
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const router = useRouter();
   const [candidates, setCandidates] = useState<any[]>([]);
   const [jobs, setJobs] = useState<any[]>([]);
@@ -40,12 +40,15 @@ export default function CandidatesPage() {
   const [rankingMessage, setRankingMessage] = useState('');
 
   useEffect(() => {
+    // Don't redirect while auth is loading
+    if (authLoading) return;
+    
     if (user?.role !== 'recruiter') {
       router.push('/');
       return;
     }
     fetchData();
-  }, [user, router]);
+  }, [user, router, authLoading]);
 
   // Auto-refresh data every 30 seconds to keep counts updated
   useEffect(() => {
@@ -414,7 +417,7 @@ export default function CandidatesPage() {
     },
   ];
 
-  if (loading) {
+  if (authLoading || loading) {
     return (
       <Layout>
         <LoadingSpinner size="lg" text="Loading candidates..." />

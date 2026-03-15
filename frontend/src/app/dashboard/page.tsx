@@ -6,10 +6,13 @@ import { useAuth } from '@/contexts/AuthContext';
 import LoadingSpinner from '@/components/LoadingSpinner';
 
 export default function DashboardPage() {
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const router = useRouter();
 
   useEffect(() => {
+    // Don't redirect while auth is loading
+    if (authLoading) return;
+    
     if (!user) {
       router.push('/auth/login');
       return;
@@ -26,7 +29,7 @@ export default function DashboardPage() {
       console.log('❌ Unknown role, redirecting to home...');
       router.push('/');
     }
-  }, [user, router]);
+  }, [user, router, authLoading]);
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50">

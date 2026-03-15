@@ -18,7 +18,7 @@ import {
 } from '@/components/Icons';
 
 export default function RecruiterDashboard() {
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState({
@@ -30,12 +30,15 @@ export default function RecruiterDashboard() {
   const [recentJobs, setRecentJobs] = useState([]);
 
   useEffect(() => {
+    // Don't redirect while auth is loading
+    if (authLoading) return;
+    
     if (!user || user.role !== 'recruiter') {
       router.push('/auth/login?role=recruiter');
       return;
     }
     fetchDashboardData();
-  }, [user, router]);
+  }, [user, router, authLoading]);
 
   const fetchDashboardData = async () => {
     try {
@@ -72,7 +75,7 @@ export default function RecruiterDashboard() {
     }
   };
 
-  if (loading) {
+  if (authLoading || loading) {
     return (
       <Layout>
         <LoadingSpinner size="lg" text="Loading dashboard..." />

@@ -21,7 +21,7 @@ import {
 } from '@/components/Icons';
 
 export default function RecruiterDashboard() {
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState({
@@ -29,8 +29,19 @@ export default function RecruiterDashboard() {
     activeJobs: 0,
     totalApplications: 0,
     pendingRankings: 0,
+    percentageChanges: {
+      jobsChange: 0,
+      applicationsChange: 0
+    }
   });
   const [recentJobs, setRecentJobs] = useState([]);
+  const [weeklyTrends, setWeeklyTrends] = useState({
+    applications: [],
+    rankings: []
+  });
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [widgetErrors, setWidgetErrors] = useState<{[key: string]: string | null}>({});
+  const [widgetLoading, setWidgetLoading] = useState<{[key: string]: boolean}>({});
 
   // Initialize WebSocket for real-time updates
   const { isConnected, lastMessage } = useWebSocket({
@@ -38,33 +49,95 @@ export default function RecruiterDashboard() {
       if (message.type === 'new_application') {
         // Refresh stats when new application is received
         fetchDashboardData();
+      } else if (message.type === 'ranking_completed') {
+        // Refresh stats when AI ranking is completed
+        fetchDashboardData();
+      } else if (message.type === 'job_published') {
+        // Refresh stats when job is published
+        fetchDashboardData();
       }
     }
   });
 
   useEffect(() => {
+    // Don't redirect while auth is loading
+    if (authLoading) return;
+    
     if (!user || user.role !== 'recruiter') {
       router.push('/auth/login?role=recruiter');
       return;
     }
     fetchDashboardData();
-  }, [user, router]);
+  }, [user, router, authLoading]);
+
+  // Auto-refresh dashboard data every 30 seconds
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (!loading) {
+        fetchDashboardData();
+      }
+    }, 30000); // 30 seconds
+
+    return () => clearInterval(interval);
+  }, [loading]);
 
   const fetchDashboardData = async () => {
     try {
       setLoading(true);
+      setWidgetErrors({});
       
       // Fetch dashboard stats using API client
-      const statsResponse = await jobsAPI.getDashboardStats();
-      if (DataValidation.validateApiResponse(statsResponse)) {
-        setStats(statsResponse.data);
+      try {
+        setWidgetLoading(prev => ({ ...prev, stats: true }));
+        const statsResponse = await jobsAPI.getDashboardStats();
+        if (statsResponse && statsResponse.success && statsResponse.data) {
+          setStats(statsResponse.data);
+          setWidgetErrors(prev => ({ ...prev, stats: null }));
+        } else {
+          setWidgetErrors(prev => ({ ...prev, stats: 'Invalid stats data received' }));
+        }
+      } catch (error) {
+        console.error('Error fetching dashboard stats:', error);
+        setWidgetErrors(prev => ({ ...prev, stats: 'Failed to load dashboard stats' }));
+      } finally {
+        setWidgetLoading(prev => ({ ...prev, stats: false }));
       }
       
       // Fetch jobs using API client
-      const jobsResponse = await jobsAPI.getJobs({ limit: 5 });
-      if (DataValidation.validateApiResponse(jobsResponse)) {
-        setRecentJobs(jobsResponse.data.slice(0, 5));
+      try {
+        setWidgetLoading(prev => ({ ...prev, jobs: true }));
+        const jobsResponse = await jobsAPI.getJobs({ limit: 5 });
+        if (jobsResponse && jobsResponse.success && jobsResponse.data) {
+          setRecentJobs(jobsResponse.data.slice(0, 5));
+          setWidgetErrors(prev => ({ ...prev, jobs: null }));
+        } else {
+          setWidgetErrors(prev => ({ ...prev, jobs: 'Invalid jobs data received' }));
+        }
+      } catch (error) {
+        console.error('Error fetching jobs:', error);
+        setWidgetErrors(prev => ({ ...prev, jobs: 'Failed to load recent jobs' }));
+      } finally {
+        setWidgetLoading(prev => ({ ...prev, jobs: false }));
       }
+      
+      // Fetch weekly trends
+      try {
+        setWidgetLoading(prev => ({ ...prev, trends: true }));
+        const trendsResponse = await jobsAPI.getWeeklyTrends();
+        if (trendsResponse && trendsResponse.success && trendsResponse.data) {
+          setWeeklyTrends(trendsResponse.data);
+          setWidgetErrors(prev => ({ ...prev, trends: null }));
+        } else {
+          setWidgetErrors(prev => ({ ...prev, trends: 'Invalid trends data received' }));
+        }
+      } catch (error) {
+        console.error('Error fetching trends:', error);
+        setWidgetErrors(prev => ({ ...prev, trends: 'Failed to load weekly trends' }));
+      } finally {
+        setWidgetLoading(prev => ({ ...prev, trends: false }));
+      }
+      
+      setLastUpdated(new Date());
       
     } catch (error) {
       console.error('Error fetching dashboard data:', error);
@@ -73,7 +146,7 @@ export default function RecruiterDashboard() {
     }
   };
 
-  if (loading) {
+  if (authLoading || loading) {
     return (
       <Layout>
         <LoadingSpinner size="lg" text="Loading dashboard..." />
@@ -135,38 +208,67 @@ export default function RecruiterDashboard() {
       <div className="space-y-8">
         {/* Stats Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          <StatCard
-            title="Total Jobs Posted"
-            value={stats.totalJobs}
-            change="+12%"
-            changeType="increase"
-            icon={<BriefcaseIcon size={24} />}
-            iconBgColor="bg-gradient-to-br from-blue-400 to-blue-600"
-          />
-          <StatCard
-            title="Active Jobs"
-            value={stats.activeJobs}
-            change="+8%"
-            changeType="increase"
-            icon={<SparklesIcon size={24} />}
-            iconBgColor="bg-gradient-to-br from-green-400 to-green-600"
-          />
-          <StatCard
-            title="Total Applications"
-            value={stats.totalApplications}
-            change="+24%"
-            changeType="increase"
-            icon={<DocumentIcon size={24} />}
-            iconBgColor="bg-gradient-to-br from-purple-400 to-purple-600"
-          />
-          <StatCard
-            title="Pending Rankings"
-            value={stats.pendingRankings}
-            change="-5%"
-            changeType="decrease"
-            icon={<ClockIcon size={24} />}
-            iconBgColor="bg-gradient-to-br from-orange-400 to-orange-600"
-          />
+          {widgetLoading.stats ? (
+            <div className="col-span-full grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+              {[1, 2, 3, 4].map((i) => (
+                <div key={i} className="bg-white rounded-xl p-6 shadow-sm border border-gray-100">
+                  <div className="animate-pulse">
+                    <div className="h-4 bg-gray-200 rounded w-3/4 mb-2"></div>
+                    <div className="h-8 bg-gray-200 rounded w-1/2 mb-2"></div>
+                    <div className="h-3 bg-gray-200 rounded w-1/4"></div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : widgetErrors.stats ? (
+            <div className="col-span-full bg-red-50 border border-red-200 rounded-xl p-6">
+              <div className="flex items-center space-x-2">
+                <span className="text-red-600">⚠️</span>
+                <span className="text-red-700">{widgetErrors.stats}</span>
+                <button
+                  onClick={() => fetchDashboardData()}
+                  className="ml-auto px-3 py-1 text-red-600 hover:text-red-700 font-medium"
+                >
+                  Retry
+                </button>
+              </div>
+            </div>
+          ) : (
+            <>
+              <StatCard
+                title="Total Jobs Posted"
+                value={stats.totalJobs}
+                change={`${stats.percentageChanges?.jobsChange > 0 ? '+' : ''}${stats.percentageChanges?.jobsChange || 0}%`}
+                changeType={stats.percentageChanges?.jobsChange > 0 ? 'increase' : stats.percentageChanges?.jobsChange < 0 ? 'decrease' : 'neutral'}
+                icon={<BriefcaseIcon size={24} />}
+                iconBgColor="bg-gradient-to-br from-blue-400 to-blue-600"
+              />
+              <StatCard
+                title="Active Jobs"
+                value={stats.activeJobs}
+                change="+8%"
+                changeType="increase"
+                icon={<SparklesIcon size={24} />}
+                iconBgColor="bg-gradient-to-br from-green-400 to-green-600"
+              />
+              <StatCard
+                title="Total Applications"
+                value={stats.totalApplications}
+                change={`${stats.percentageChanges?.applicationsChange > 0 ? '+' : ''}${stats.percentageChanges?.applicationsChange || 0}%`}
+                changeType={stats.percentageChanges?.applicationsChange > 0 ? 'increase' : stats.percentageChanges?.applicationsChange < 0 ? 'decrease' : 'neutral'}
+                icon={<DocumentIcon size={24} />}
+                iconBgColor="bg-gradient-to-br from-purple-400 to-purple-600"
+              />
+              <StatCard
+                title="Pending Rankings"
+                value={stats.pendingRankings}
+                change={stats.pendingRankings > 0 ? '-5%' : '0%'}
+                changeType={stats.pendingRankings > 0 ? 'decrease' : 'neutral'}
+                icon={<ClockIcon size={24} />}
+                iconBgColor="bg-gradient-to-br from-orange-400 to-orange-600"
+              />
+            </>
+          )}
         </div>
 
         {/* Quick Actions */}
@@ -238,44 +340,130 @@ export default function RecruiterDashboard() {
               <span>→</span>
             </button>
           </div>
-          <Table
-            columns={jobColumns}
-            data={recentJobs}
-            onRowClick={(job) => router.push(`/jobs/${job.id}`)}
-          />
+          {widgetLoading.jobs ? (
+            <div className="bg-white rounded-xl p-8 shadow-sm border border-gray-100">
+              <div className="animate-pulse space-y-4">
+                {[1, 2, 3, 4, 5].map((i) => (
+                  <div key={i} className="flex items-center space-x-4">
+                    <div className="h-4 bg-gray-200 rounded w-1/4"></div>
+                    <div className="h-4 bg-gray-200 rounded w-1/6"></div>
+                    <div className="h-4 bg-gray-200 rounded w-1/8"></div>
+                    <div className="h-4 bg-gray-200 rounded w-1/6"></div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : widgetErrors.jobs ? (
+            <div className="bg-red-50 border border-red-200 rounded-xl p-8">
+              <div className="flex items-center space-x-2">
+                <span className="text-red-600">⚠️</span>
+                <span className="text-red-700">{widgetErrors.jobs}</span>
+                <button
+                  onClick={() => fetchDashboardData()}
+                  className="ml-auto px-3 py-1 text-red-600 hover:text-red-700 font-medium"
+                >
+                  Retry
+                </button>
+              </div>
+            </div>
+          ) : (
+            <Table
+              columns={jobColumns}
+              data={recentJobs}
+              onRowClick={(job) => router.push(`/jobs/${job.id}`)}
+            />
+          )}
         </div>
 
         {/* Activity Overview */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <ActivityChart
-            title="Applications Received"
-            data={[
-              { label: 'Mon', value: 12, previousValue: 8 },
-              { label: 'Tue', value: 19, previousValue: 15 },
-              { label: 'Wed', value: 15, previousValue: 18 },
-              { label: 'Thu', value: 25, previousValue: 20 },
-              { label: 'Fri', value: 22, previousValue: 17 },
-              { label: 'Sat', value: 8, previousValue: 6 },
-              { label: 'Sun', value: 5, previousValue: 4 },
-            ]}
-            type="bar"
-            color="#3B82F6"
-          />
-          
-          <ActivityChart
-            title="AI Rankings Completed"
-            data={[
-              { label: 'Mon', value: 8, previousValue: 6 },
-              { label: 'Tue', value: 15, previousValue: 12 },
-              { label: 'Wed', value: 12, previousValue: 14 },
-              { label: 'Thu', value: 20, previousValue: 16 },
-              { label: 'Fri', value: 18, previousValue: 15 },
-              { label: 'Sat', value: 6, previousValue: 5 },
-              { label: 'Sun', value: 4, previousValue: 3 },
-            ]}
-            type="line"
-            color="#10B981"
-          />
+          {widgetLoading.trends ? (
+            <>
+              <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-100">
+                <div className="animate-pulse">
+                  <div className="h-6 bg-gray-200 rounded w-1/3 mb-6"></div>
+                  <div className="h-40 bg-gray-200 rounded mb-4"></div>
+                  <div className="flex justify-between">
+                    {[1, 2, 3, 4, 5, 6, 7].map((i) => (
+                      <div key={i} className="h-3 bg-gray-200 rounded w-8"></div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+              <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-100">
+                <div className="animate-pulse">
+                  <div className="h-6 bg-gray-200 rounded w-1/3 mb-6"></div>
+                  <div className="h-40 bg-gray-200 rounded mb-4"></div>
+                  <div className="flex justify-between">
+                    {[1, 2, 3, 4, 5, 6, 7].map((i) => (
+                      <div key={i} className="h-3 bg-gray-200 rounded w-8"></div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </>
+          ) : widgetErrors.trends ? (
+            <div className="col-span-full bg-red-50 border border-red-200 rounded-xl p-6">
+              <div className="flex items-center space-x-2">
+                <span className="text-red-600">⚠️</span>
+                <span className="text-red-700">{widgetErrors.trends}</span>
+                <button
+                  onClick={() => fetchDashboardData()}
+                  className="ml-auto px-3 py-1 text-red-600 hover:text-red-700 font-medium"
+                >
+                  Retry
+                </button>
+              </div>
+            </div>
+          ) : (
+            <>
+              <ActivityChart
+                title="Applications Received"
+                data={weeklyTrends.applications.length > 0 ? weeklyTrends.applications : [
+                  { label: 'Mon', value: 0, previousValue: 0 },
+                  { label: 'Tue', value: 0, previousValue: 0 },
+                  { label: 'Wed', value: 0, previousValue: 0 },
+                  { label: 'Thu', value: 0, previousValue: 0 },
+                  { label: 'Fri', value: 0, previousValue: 0 },
+                  { label: 'Sat', value: 0, previousValue: 0 },
+                  { label: 'Sun', value: 0, previousValue: 0 },
+                ]}
+                type="bar"
+                color="#3B82F6"
+              />
+              
+              <ActivityChart
+                title="AI Rankings Completed"
+                data={weeklyTrends.rankings.length > 0 ? weeklyTrends.rankings : [
+                  { label: 'Mon', value: 0, previousValue: 0 },
+                  { label: 'Tue', value: 0, previousValue: 0 },
+                  { label: 'Wed', value: 0, previousValue: 0 },
+                  { label: 'Thu', value: 0, previousValue: 0 },
+                  { label: 'Fri', value: 0, previousValue: 0 },
+                  { label: 'Sat', value: 0, previousValue: 0 },
+                  { label: 'Sun', value: 0, previousValue: 0 },
+                ]}
+                type="line"
+                color="#10B981"
+              />
+            </>
+          )}
+        </div>
+
+        {/* Connection Status */}
+        <div className="flex items-center justify-between text-sm text-gray-500">
+          <div className="flex items-center space-x-4">
+            <span>WebSocket: {isConnected ? '🟢 Connected' : '🔴 Disconnected'}</span>
+            {lastUpdated && (
+              <span>Last updated: {lastUpdated.toLocaleTimeString()}</span>
+            )}
+          </div>
+          <button
+            onClick={fetchDashboardData}
+            className="px-3 py-1 text-blue-600 hover:text-blue-700 font-medium"
+          >
+            Refresh
+          </button>
         </div>
       </div>
     </Layout>

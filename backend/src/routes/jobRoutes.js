@@ -454,13 +454,66 @@ router.get('/stats/dashboard', authenticateToken, requireRecruiter, async (req, 
     );
     console.log('Pending rankings result:', pendingRankings);
 
+    // Calculate percentage changes (compare with last month)
+    const lastMonthStart = new Date();
+    lastMonthStart.setMonth(lastMonthStart.getMonth() - 1);
+    lastMonthStart.setDate(1);
+    lastMonthStart.setHours(0, 0, 0, 0);
+
+    const thisMonthStart = new Date();
+    thisMonthStart.setDate(1);
+    thisMonthStart.setHours(0, 0, 0, 0);
+
+    // Get last month jobs count
+    const lastMonthJobs = await db.query(
+      'SELECT COUNT(*) as count FROM jobs WHERE recruiter_id = ? AND created_at >= ? AND created_at < ?',
+      [recruiterId, lastMonthStart, thisMonthStart]
+    );
+
+    // Get this month jobs count
+    const thisMonthJobs = await db.query(
+      'SELECT COUNT(*) as count FROM jobs WHERE recruiter_id = ? AND created_at >= ?',
+      [recruiterId, thisMonthStart]
+    );
+
+    // Get last month applications count
+    const lastMonthApplications = await db.query(
+      `SELECT COUNT(*) as count 
+       FROM applications a 
+       JOIN jobs j ON a.job_id = j.id 
+       WHERE j.recruiter_id = ? AND a.applied_at >= ? AND a.applied_at < ?`,
+      [recruiterId, lastMonthStart, thisMonthStart]
+    );
+
+    // Get this month applications count
+    const thisMonthApplications = await db.query(
+      `SELECT COUNT(*) as count 
+       FROM applications a 
+       JOIN jobs j ON a.job_id = j.id 
+       WHERE j.recruiter_id = ? AND a.applied_at >= ?`,
+      [recruiterId, thisMonthStart]
+    );
+
+    // Calculate percentage changes
+    const jobsChange = lastMonthJobs[0]?.count > 0 
+      ? ((thisMonthJobs[0]?.count - lastMonthJobs[0]?.count) / lastMonthJobs[0]?.count * 100).toFixed(1)
+      : thisMonthJobs[0]?.count > 0 ? '+100' : '0';
+
+    const applicationsChange = lastMonthApplications[0]?.count > 0
+      ? ((thisMonthApplications[0]?.count - lastMonthApplications[0]?.count) / lastMonthApplications[0]?.count * 100).toFixed(1)
+      : thisMonthApplications[0]?.count > 0 ? '+100' : '0';
+
     res.json({
       success: true,
       data: {
         totalJobs: totalJobs[0]?.count || 0,
         activeJobs: activeJobs[0]?.count || 0,
         totalApplications: totalApplications[0]?.count || 0,
-        pendingRankings: pendingRankings[0]?.count || 0
+        pendingRankings: pendingRankings[0]?.count || 0,
+        percentageChanges: {
+          jobsChange: parseFloat(jobsChange),
+          applicationsChange: parseFloat(applicationsChange)
+        }
       }
     });
   } catch (error) {
@@ -468,6 +521,135 @@ router.get('/stats/dashboard', authenticateToken, requireRecruiter, async (req, 
     res.status(500).json({
       success: false,
       message: 'Failed to fetch dashboard stats'
+    });
+  }
+});
+
+// Get weekly trends for dashboard
+router.get('/trends/weekly', authenticateToken, requireRecruiter, async (req, res) => {
+  try {
+    const recruiterId = req.user.id;
+    console.log('Fetching weekly trends for recruiter:', recruiterId);
+
+    // Get last 7 days application trends
+    const sevenDaysAgo = new Date();
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+    sevenDaysAgo.setHours(0, 0, 0, 0);
+
+    console.log('Seven days ago:', sevenDaysAgo);
+
+    const applicationsTrend = await db.query(
+      `SELECT 
+         DATE(a.applied_at) as date,
+         COUNT(*) as applications,
+         DAYNAME(a.applied_at) as day_name
+       FROM applications a 
+       JOIN jobs j ON a.job_id = j.id 
+       WHERE j.recruiter_id = ? AND a.applied_at >= ?
+       GROUP BY DATE(a.applied_at), DAYNAME(a.applied_at)
+       ORDER BY DATE(a.applied_at)`,
+      [recruiterId, sevenDaysAgo]
+    );
+
+    console.log('Applications trend result:', applicationsTrend);
+
+    // Get last 7 days AI ranking trends
+    const rankingsTrend = await db.query(
+      `SELECT 
+         DATE(r.ranked_at) as date,
+         COUNT(*) as rankings,
+         DAYNAME(r.ranked_at) as day_name
+       FROM rankings r
+       JOIN applications a ON r.application_id = a.id
+       JOIN jobs j ON a.job_id = j.id
+       WHERE j.recruiter_id = ? AND r.ranked_at >= ?
+       GROUP BY DATE(r.ranked_at), DAYNAME(r.ranked_at)
+       ORDER BY DATE(r.ranked_at)`,
+      [recruiterId, sevenDaysAgo]
+    );
+
+    console.log('Rankings trend result:', rankingsTrend);
+
+    // Get previous week data for comparison
+    const fourteenDaysAgo = new Date();
+    fourteenDaysAgo.setDate(fourteenDaysAgo.getDate() - 14);
+    fourteenDaysAgo.setHours(0, 0, 0, 0);
+
+    const previousApplicationsTrend = await db.query(
+      `SELECT 
+         DATE(a.applied_at) as date,
+         COUNT(*) as applications
+       FROM applications a 
+       JOIN jobs j ON a.job_id = j.id 
+       WHERE j.recruiter_id = ? AND a.applied_at >= ? AND a.applied_at < ?
+       GROUP BY DATE(a.applied_at)
+       ORDER BY DATE(a.applied_at)`,
+      [recruiterId, fourteenDaysAgo, sevenDaysAgo]
+    );
+
+    console.log('Previous applications trend result:', previousApplicationsTrend);
+
+    const previousRankingsTrend = await db.query(
+      `SELECT 
+         DATE(r.ranked_at) as date,
+         COUNT(*) as rankings
+       FROM rankings r
+       JOIN applications a ON r.application_id = a.id
+       JOIN jobs j ON a.job_id = j.id
+       WHERE j.recruiter_id = ? AND r.ranked_at >= ? AND r.ranked_at < ?
+       GROUP BY DATE(r.ranked_at)
+       ORDER BY DATE(r.ranked_at)`,
+      [recruiterId, fourteenDaysAgo, sevenDaysAgo]
+    );
+
+    console.log('Previous rankings trend result:', previousRankingsTrend);
+
+    // Format data for charts
+    const daysOfWeek = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    const applicationsData = daysOfWeek.map((day, index) => {
+      const dayData = applicationsTrend.find(d => d.day_name?.startsWith(day.substring(0, 3)));
+      const previousDayData = previousApplicationsTrend.find(d => {
+        const prevDate = new Date(d.date);
+        return prevDate.getDay() === (index + 1) % 7; // Adjust for Sunday = 0
+      });
+      
+      return {
+        label: day,
+        value: dayData?.applications || 0,
+        previousValue: previousDayData?.applications || 0
+      };
+    });
+
+    const rankingsData = daysOfWeek.map((day, index) => {
+      const dayData = rankingsTrend.find(d => d.day_name?.startsWith(day.substring(0, 3)));
+      const previousDayData = previousRankingsTrend.find(d => {
+        const prevDate = new Date(d.date);
+        return prevDate.getDay() === (index + 1) % 7;
+      });
+      
+      return {
+        label: day,
+        value: dayData?.rankings || 0,
+        previousValue: previousDayData?.rankings || 0
+      };
+    });
+
+    const responseData = {
+      applications: applicationsData,
+      rankings: rankingsData
+    };
+
+    console.log('Final trends data:', JSON.stringify(responseData, null, 2));
+
+    res.json({
+      success: true,
+      data: responseData
+    });
+  } catch (error) {
+    console.error('Error fetching weekly trends:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch weekly trends'
     });
   }
 });

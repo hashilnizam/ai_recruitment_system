@@ -154,6 +154,8 @@ export const jobsAPI = {
   getTrends: () => api.get('/api/jobs/trends'),
   
   getDashboardStats: () => api.get('/api/jobs/stats/dashboard'),
+  
+  getWeeklyTrends: () => api.get('/api/jobs/trends/weekly'),
 };
 
 // Applications API

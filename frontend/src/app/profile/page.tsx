@@ -18,7 +18,7 @@ import {
 import toast from 'react-hot-toast';
 
 export default function ProfilePage() {
-  const { user, logout } = useAuth();
+  const { user, logout, loading: authLoading } = useAuth();
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);
@@ -33,13 +33,16 @@ export default function ProfilePage() {
   });
 
   useEffect(() => {
+    // Don't redirect while auth is loading
+    if (authLoading) return;
+    
     if (!user) {
       router.push('/auth/login');
       return;
     }
 
     fetchProfile();
-  }, [user, router]);
+  }, [user, router, authLoading]);
 
   const fetchProfile = async () => {
     try {
@@ -119,7 +122,7 @@ export default function ProfilePage() {
     fetchProfile(); // Reset to original data
   };
 
-  if (loading) {
+  if (authLoading || loading) {
     return (
       <Layout>
         <LoadingSpinner text="Loading profile..." />

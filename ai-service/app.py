@@ -22,6 +22,15 @@ ai_service = AIService()
 # Global variable for tracking processing status
 processing_status = {}
 
+@app.route('/api/test', methods=['GET'])
+def test_endpoint():
+    """Test endpoint to verify Flask is working"""
+    print("🔥🔥🔥 TEST ENDPOINT CALLED 🔥🔥🔥")
+    return jsonify({
+        'success': True,
+        'message': 'Test endpoint working'
+    })
+
 @app.route('/health', methods=['GET'])
 def health_check():
     """Health check endpoint"""
@@ -130,19 +139,18 @@ def rank_candidates():
                 'message': 'Ranking is already in progress for this job'
             }), 400
         
-        # Start processing in background (for testing, run synchronously)
+        # Start processing in background
         print(f"🧵 Starting ranking process for job {job_id}")
         try:
-            process_ranking(job_id)
-            print(f"✅ Ranking process completed for job {job_id}")
+            print(f"🔥 About to start background thread for process_ranking({job_id})")
+            thread = threading.Thread(target=process_ranking, args=(job_id,))
+            thread.daemon = True
+            thread.start()
+            print(f"✅ Background thread started for job {job_id}")
         except Exception as e:
-            print(f"❌ Ranking process failed for job {job_id}: {e}")
+            print(f"❌ Failed to start background thread for job {job_id}: {e}")
             import traceback
             traceback.print_exc()
-        
-        # thread = threading.Thread(target=process_ranking, args=(job_id,))
-        # thread.daemon = True
-        # thread.start()
         
         print(f"🧵 Background thread started for job {job_id}")
         
@@ -194,6 +202,10 @@ def get_ranking_status(job_id):
 def process_ranking(job_id):
     """Process ranking for all candidates of a job"""
     from datetime import datetime
+    
+    print(f"🚀🚀🚀 process_ranking function called for job {job_id} 🚀🚀🚀")
+    print(f"🚀🚀🚀 Thread ID: {threading.current_thread().ident} 🚀🚀🚀")
+    print(f"🚀🚀🚀 Thread Name: {threading.current_thread().name} 🚀🚀🚀")
     
     try:
         print(f"🚀 Starting ranking process for job {job_id}")
@@ -612,4 +624,4 @@ def get_candidate_data(application_id, is_resume_upload=False):
 
 if __name__ == '__main__':
     print("🤖 AI Service starting on port 5001")
-    app.run(host='0.0.0.0', port=5001, debug=True)
+    app.run(host='0.0.0.0', port=5001, debug=True, use_reloader=False)

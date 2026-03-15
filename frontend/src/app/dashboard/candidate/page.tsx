@@ -12,7 +12,7 @@ import { BriefcaseIcon, DocumentIcon, TrendingUpIcon, UserIcon, CalendarIcon, Ch
 import toast from 'react-hot-toast';
 
 export default function CandidateDashboard() {
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const router = useRouter();
   const [jobs, setJobs] = useState<any[]>([]);
   const [applications, setApplications] = useState<any[]>([]);
@@ -27,6 +27,9 @@ export default function CandidateDashboard() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    // Don't redirect while auth is loading
+    if (authLoading) return;
+    
     if (!user) {
       router.push('/auth/login');
       return;
@@ -38,7 +41,7 @@ export default function CandidateDashboard() {
     }
 
     fetchDashboardData();
-  }, [user, router]);
+  }, [user, router, authLoading]);
 
   const fetchDashboardData = async () => {
     try {
@@ -81,7 +84,7 @@ export default function CandidateDashboard() {
     router.push('/');
   };
 
-  if (loading) {
+  if (authLoading || loading) {
     return (
       <Layout>
         <div className="min-h-screen flex items-center justify-center">

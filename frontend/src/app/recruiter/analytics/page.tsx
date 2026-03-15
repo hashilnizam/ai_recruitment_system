@@ -7,6 +7,7 @@ import StatCard from '@/components/StatCard';
 import LoadingSpinner from '@/components/LoadingSpinner';
 import { jobsAPI, applicationsAPI } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
+import { useWebSocket } from '@/hooks/useWebSocket';
 import { 
   BriefcaseIcon, 
   SparklesIcon, 
@@ -21,12 +22,29 @@ import {
 } from 'lucide-react';
 
 export default function AnalyticsPage() {
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [analytics, setAnalytics] = useState<any>(null);
   const [jobs, setJobs] = useState<any[]>([]);
   const [allApplications, setAllApplications] = useState<any[]>([]);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+
+  // Initialize WebSocket for real-time updates
+  const { isConnected, lastMessage } = useWebSocket({
+    onMessage: (message) => {
+      if (message.type === 'new_application') {
+        // Refresh analytics when new application is received
+        fetchAnalytics();
+      } else if (message.type === 'ranking_completed') {
+        // Refresh analytics when AI ranking is completed
+        fetchAnalytics();
+      } else if (message.type === 'job_published') {
+        // Refresh analytics when job is published
+        fetchAnalytics();
+      }
+    }
+  });
 
   interface Job {
     id: number;
@@ -161,15 +179,36 @@ export default function AnalyticsPage() {
         conversionRate: rankedCount > 0 ? Math.round((rankedCount / applications.length) * 100) : 0
       };
 
-      // Application trends (mock data for now - you can enhance this)
-      const applicationTrends = [
-        { month: 'Jan', applications: Math.floor(Math.random() * 20) + 10 },
-        { month: 'Feb', applications: Math.floor(Math.random() * 20) + 15 },
-        { month: 'Mar', applications: Math.floor(Math.random() * 20) + 20 },
-        { month: 'Apr', applications: Math.floor(Math.random() * 20) + 18 },
-        { month: 'May', applications: Math.floor(Math.random() * 20) + 25 },
-        { month: 'Jun', applications: allApplications.length },
-      ];
+      // Application trends - Calculate real monthly data from applications
+      const monthlyTrends: Record<string, number> = {};
+      const currentYear = new Date().getFullYear();
+      
+      // Initialize last 6 months with 0
+      for (let i = 5; i >= 0; i--) {
+        const date = new Date();
+        date.setMonth(date.getMonth() - i);
+        const monthKey = date.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+        monthlyTrends[monthKey] = 0;
+      }
+      
+      // Count applications by month
+      applications.forEach((app: any) => {
+        if (app.applied_at) {
+          const appDate = new Date(app.applied_at);
+          if (appDate.getFullYear() === currentYear) {
+            const monthKey = appDate.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+            if (monthlyTrends.hasOwnProperty(monthKey)) {
+              monthlyTrends[monthKey]++;
+            }
+          }
+        }
+      });
+      
+      // Convert to array format
+      const applicationTrends = Object.entries(monthlyTrends).map(([month, applications]) => ({
+        month: month.split(' ')[0], // Just get month name like "Jan", "Feb", etc.
+        applications
+      }));
 
       setAnalytics({
         overview,
@@ -183,6 +222,7 @@ export default function AnalyticsPage() {
         },
       });
       
+      setLastUpdated(new Date());
       console.log('✅ Analytics data set successfully:', {
         overview,
         jobPerformance: jobPerformance.length,
@@ -217,6 +257,10 @@ export default function AnalyticsPage() {
 
   useEffect(() => {
     console.log('🎯 Analytics useEffect triggered:', { user: user?.id, role: user?.role });
+    
+    // Don't redirect while auth is loading
+    if (authLoading) return;
+    
     if (!user) {
       router.push('/auth/login');
       return;
@@ -229,10 +273,21 @@ export default function AnalyticsPage() {
     }
     console.log('✅ User is recruiter, fetching analytics...');
     fetchAnalytics();
-  }, [user, router]);
+  }, [user, router, authLoading]);
 
-  if (loading || !analytics) {
-    console.log('🔄 Still loading or no analytics data:', { loading, analytics });
+  // Auto-refresh analytics data every 30 seconds
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (!loading && !authLoading) {
+        fetchAnalytics();
+      }
+    }, 30000); // 30 seconds
+
+    return () => clearInterval(interval);
+  }, [loading, authLoading]);
+
+  if (authLoading || loading || !analytics) {
+    console.log('🔄 Still loading or no analytics data:', { authLoading, loading, analytics });
     return (
       <Layout>
         <LoadingSpinner size="lg" text="Loading analytics..." />
@@ -445,6 +500,22 @@ export default function AnalyticsPage() {
               Keep posting quality positions!
             </p>
           </div>
+        </div>
+
+        {/* Connection Status */}
+        <div className="flex items-center justify-between text-sm text-gray-500">
+          <div className="flex items-center space-x-4">
+            <span>WebSocket: {isConnected ? '🟢 Connected' : '🔴 Disconnected'}</span>
+            {lastUpdated && (
+              <span>Last updated: {lastUpdated.toLocaleTimeString()}</span>
+            )}
+          </div>
+          <button
+            onClick={() => fetchAnalytics()}
+            className="px-3 py-1 text-blue-600 hover:text-blue-700 font-medium"
+          >
+            Refresh
+          </button>
         </div>
       </div>
     </Layout>
