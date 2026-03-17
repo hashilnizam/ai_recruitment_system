@@ -224,8 +224,8 @@ export default function CandidatesPage() {
       const jobsList = jobsResponse.data?.data || [];
       setJobs(jobsList);
       
-      console.log(`📊 Found ${jobsList.length} jobs:`, jobsList.map(j => ({ id: j.id, title: j.title })));
-
+      console.log(`📊 Found ${jobsList.length} jobs:`, jobsList.map((j: any) => ({ id: j.id, title: j.title })));
+      
       // Fetch rankings for each job
       const allCandidates: any[] = [];
       
@@ -268,59 +268,59 @@ export default function CandidatesPage() {
           });
           
         } catch (error) {
-          console.error(`❌ Error fetching rankings for job ${job.id}:`, error);
+          console.log('No rankings found yet:', error);
         }
       }
       
       // Also get resumes for direct uploads
       try {
-        console.log('📄 Fetching resume uploads...');
+        console.log('📄 Fetching recruiter resumes with ranking data');
         const resumesResponse = await recruiterAPI.getResumes();
         const resumes = resumesResponse.data || [];
         
-        // Get most recent job for resume rankings
+        // Fetch ranking data for most recent job
         const recentJob = jobsList[jobsList.length - 1];
+        let rankings = [];
+        
         if (recentJob) {
-          console.log(`📄 Fetching rankings for resumes (job ${recentJob.id})...`);
           try {
-            const resumeRankingsResponse = await fetch(`/api/rankings/job/${recentJob.id}`, {
+            const rankingsResponse = await fetch(`http://localhost:5000/api/rankings/job/${recentJob.id}`, {
               headers: {
                 'Authorization': `Bearer ${localStorage.getItem('token')}`,
                 'Content-Type': 'application/json'
               }
             });
-            
-            if (resumeRankingsResponse.ok) {
-              const resumeRankingsData = await resumeRankingsResponse.json();
-              const resumeRankings = resumeRankingsData.data || [];
-              
-              resumes.forEach((resume: any) => {
-                const ranking = resumeRankings.find((r: any) => r.candidate_id === resume.id);
-                
-                allCandidates.push({
-                  ...resume,
-                  first_name: resume.original_name?.split('.')[0] || 'Unknown',
-                  last_name: '',
-                  email: 'resume-upload@system.com',
-                  jobTitle: 'Direct Resume Upload',
-                  jobId: recentJob?.id || 0,
-                  candidate_id: resume.id,
-                  status: ranking?.rank_position ? 'ranked' : 'pending',
-                  total_score: ranking?.total_score || null,
-                  skill_score: ranking?.skill_score || null,
-                  education_score: ranking?.education_score || null,
-                  experience_score: ranking?.experience_score || null,
-                  rank_position: ranking?.rank_position || null,
-                  applied_at: resume.uploaded_at,
-                  isResumeUpload: true,
-                  feedback: ranking?.overall_assessment || ranking?.suggestions || null
-                });
-              });
-            }
+            const rankingsData = await rankingsResponse.json();
+            rankings = rankingsData.data || [];
+            console.log('📊 Rankings data:', rankingsData);
           } catch (error) {
-            console.log('No resume rankings found yet');
+            console.log('No rankings found yet:', error);
           }
         }
+        
+        resumes.forEach((resume: any) => {
+          const ranking = rankings.find((r: any) => r.candidate_id === resume.id);
+          
+          allCandidates.push({
+            ...resume,
+            first_name: resume.original_name?.split('.')[0] || 'Unknown',
+            last_name: '',
+            email: 'resume-upload@system.com',
+            jobTitle: 'Direct Resume Upload',
+            jobId: recentJob?.id || null,
+            status: ranking ? 'ranked' : 'pending',
+            rank_position: ranking?.rank_position || null,
+            total_score: ranking?.total_score || 0,
+            skill_score: ranking?.skill_score || 0,
+            education_score: ranking?.education_score || 0,
+            experience_score: ranking?.experience_score || 0,
+            feedback: ranking?.overall_assessment || null,
+            isResumeUpload: true,
+            applied_at: resume.uploaded_at
+          });
+        });
+        
+        console.log('📄 Added resume uploads:', resumes.length);
       } catch (error) {
         console.error('Error fetching recruiter resumes:', error);
       }
@@ -328,7 +328,7 @@ export default function CandidatesPage() {
       console.log(`📊 Total candidates fetched: ${allCandidates.length}`);
       
       // Sort candidates by rank position (ranked candidates first)
-      allCandidates.sort((a, b) => {
+      allCandidates.sort((a: any, b: any) => {
         if (a.rank_position && b.rank_position) {
           return a.rank_position - b.rank_position;
         }
@@ -338,7 +338,7 @@ export default function CandidatesPage() {
       });
       
       // Get top 3 ranked candidates
-      const topRanked = allCandidates.filter(c => c.rank_position && c.rank_position <= 3);
+      const topRanked = allCandidates.filter((c: any) => c.rank_position && c.rank_position <= 3);
       setTopRankedCandidates(topRanked);
       
       setCandidates(allCandidates);
@@ -530,36 +530,11 @@ export default function CandidatesPage() {
             </div>
             <div className="flex items-center space-x-3">
               <button
-                onClick={handleRefresh}
-                disabled={refreshing}
-                className="flex items-center px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <RefreshCwIcon className={`w-4 h-4 mr-2 ${refreshing ? 'animate-spin' : ''}`} />
-                {refreshing ? 'Refreshing...' : 'Refresh'}
-              </button>
-              <button
-                onClick={triggerAIRanking}
-                disabled={rankingInProgress}
-                className="flex items-center px-4 py-2 bg-gradient-to-r from-purple-600 to-blue-600 text-white rounded-lg hover:from-purple-700 hover:to-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <BrainIcon className={`w-4 h-4 mr-2 ${rankingInProgress ? 'animate-pulse' : ''}`} />
-                {rankingInProgress ? 'AI Ranking...' : 'AI Ranking'}
-              </button>
-              {rankingInProgress && (
-                <button
-                  onClick={stopAIRanking}
-                  className="flex items-center px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
-                >
-                  <SquareIcon className="w-4 h-4 mr-2" />
-                  Stop
-                </button>
-              )}
-              <button
                 onClick={() => router.push('/candidates/ranking-results')}
                 className="flex items-center px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
               >
                 <TrophyIcon className="w-4 h-4 mr-2" />
-                View Results
+                View AI Results
               </button>
               <button
                 onClick={() => setShowUploadSection(!showUploadSection)}
@@ -568,31 +543,21 @@ export default function CandidatesPage() {
                 <UploadIcon className="w-4 h-4 mr-2" />
                 {showUploadSection ? 'Hide Upload' : 'Upload Resumes'}
               </button>
+              <button
+                onClick={handleRefresh}
+                disabled={refreshing}
+                className="flex items-center px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <RefreshCwIcon className={`w-4 h-4 mr-2 ${refreshing ? 'animate-spin' : ''}`} />
+                {refreshing ? 'Refreshing...' : 'Refresh'}
+              </button>
             </div>
           </div>
         </div>
 
-        {/* Debug Info - Remove later */}
-        {process.env.NODE_ENV === 'development' && (
-          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 mb-4 text-xs">
-            <div className="flex items-center justify-between">
-              <span>Debug: rankingInProgress={rankingInProgress.toString()}, progress={rankingProgress}%</span>
-              <button
-                onClick={() => {
-                  console.log('🔧 Manual state check:', { rankingInProgress, rankingProgress, rankingSuccess });
-                }}
-                className="px-2 py-1 bg-yellow-600 text-white rounded text-xs"
-              >
-                Check State
-              </button>
-            </div>
-          </div>
-        )}
-
         {/* AI Ranking Progress */}
         {rankingInProgress && (
           <>
-            {console.log('🎨 Rendering AI Ranking Progress - rankingInProgress:', rankingInProgress, 'Progress:', rankingProgress)}
             <div className="bg-gradient-to-r from-purple-50 to-blue-50 rounded-xl p-6 mb-6 border border-purple-200">
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center">

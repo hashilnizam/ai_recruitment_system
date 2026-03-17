@@ -307,74 +307,81 @@ def process_ranking(job_id):
                             for page in pdf_reader.pages:
                                 resume_text += page.extract_text()
                         
-                        # Use AI to extract structured data
-                        extracted_data = ai_service.extract_resume_data(resume_text)
-                        
-                        # Map the extracted data to the expected format
-                        skills = extracted_data.get('skills', [])
-                        education = extracted_data.get('education', [])
-                        experience = extracted_data.get('experience', [])
-                        
-                        # Convert skills format: name -> skill_name
-                        mapped_skills = []
-                        for skill in skills:
-                            mapped_skills.append({
-                                'skill_name': skill.get('name', ''),
-                                'proficiency_level': skill.get('level', 'intermediate'),
-                                'years_of_experience': skill.get('experience_years', 0)
-                            })
-                        
-                        # Convert education format: field -> field_of_study, end_date -> graduation_year
-                        mapped_education = []
-                        for edu in education:
-                            mapped_education.append({
-                                'degree': edu.get('degree', ''),
-                                'field_of_study': edu.get('field', ''),
-                                'institution': edu.get('institution', ''),
-                                'graduation_year': int(edu.get('end_date', '2023')) if edu.get('end_date') else None,
-                                'gpa': edu.get('gpa')
-                            })
-                        
-                        # Convert experience format: start_date, end_date to duration_months
-                        mapped_experience = []
-                        for exp in experience:
-                            start_date = exp.get('start_date', '')
-                            end_date = exp.get('end_date', 'Present')
+                        if not resume_text.strip():
+                            print(f"⚠️ Empty or unreadable PDF: {candidate_data['resume_name']}")
+                            # Use default values if PDF is empty
+                            candidate_data['skills'] = []
+                            candidate_data['education'] = []
+                            candidate_data['experience'] = []
+                        else:
+                            # Use AI to extract structured data
+                            extracted_data = ai_service.extract_resume_data(resume_text)
                             
-                            # Calculate duration in months (simplified)
-                            duration_months = 12  # Default to 1 year
-                            if start_date:
-                                try:
-                                    start_year = int(start_date.split('-')[0])
-                                    if end_date != 'Present':
-                                        end_year = int(end_date.split('-')[0])
-                                        duration_months = (end_year - start_year) * 12
-                                    else:
-                                        from datetime import datetime
-                                        current_year = datetime.now().year
-                                        duration_months = (current_year - start_year) * 12
-                                except:
-                                    duration_months = 12
+                            # Map the extracted data to the expected format
+                            skills = extracted_data.get('skills', [])
+                            education = extracted_data.get('education', [])
+                            experience = extracted_data.get('experience', [])
                             
-                            mapped_experience.append({
-                                'job_title': exp.get('title', ''),
-                                'company': exp.get('company', ''),
-                                'duration_months': duration_months,
-                                'start_date': exp.get('start_date'),
-                                'end_date': exp.get('end_date'),
-                                'is_current': exp.get('end_date') == 'Present',
-                                'description': exp.get('description', '')
-                            })
-                        
-                        # Update candidate data with mapped information
-                        candidate_data['skills'] = mapped_skills
-                        candidate_data['education'] = mapped_education
-                        candidate_data['experience'] = mapped_experience
-                        
-                        print(f"✅ Resume parsed and mapped successfully for {candidate_data['resume_name']}")
-                        print(f"   🎯 Mapped {len(mapped_skills)} skills")
-                        print(f"   🎓 Mapped {len(mapped_education)} education entries")
-                        print(f"   💼 Mapped {len(mapped_experience)} experience entries")
+                            # Convert skills format: name -> skill_name
+                            mapped_skills = []
+                            for skill in skills:
+                                mapped_skills.append({
+                                    'skill_name': skill.get('name', ''),
+                                    'proficiency_level': skill.get('level', 'intermediate'),
+                                    'years_of_experience': skill.get('experience_years', 0)
+                                })
+                            
+                            # Convert education format: field -> field_of_study, end_date -> graduation_year
+                            mapped_education = []
+                            for edu in education:
+                                mapped_education.append({
+                                    'degree': edu.get('degree', ''),
+                                    'field_of_study': edu.get('field', ''),
+                                    'institution': edu.get('institution', ''),
+                                    'graduation_year': int(edu.get('end_date', '2023')) if edu.get('end_date') else None,
+                                    'gpa': edu.get('gpa')
+                                })
+                            
+                            # Convert experience format: start_date, end_date to duration_months
+                            mapped_experience = []
+                            for exp in experience:
+                                start_date = exp.get('start_date', '')
+                                end_date = exp.get('end_date', 'Present')
+                                
+                                # Calculate duration in months (simplified)
+                                duration_months = 12  # Default to 1 year
+                                if start_date:
+                                    try:
+                                        start_year = int(start_date.split('-')[0])
+                                        if end_date != 'Present':
+                                            end_year = int(end_date.split('-')[0])
+                                            duration_months = (end_year - start_year) * 12
+                                        else:
+                                            from datetime import datetime
+                                            current_year = datetime.now().year
+                                            duration_months = (current_year - start_year) * 12
+                                    except:
+                                        duration_months = 12
+                                
+                                mapped_experience.append({
+                                    'job_title': exp.get('title', ''),
+                                    'company': exp.get('company', ''),
+                                    'duration_months': duration_months,
+                                    'start_date': exp.get('start_date'),
+                                    'end_date': exp.get('end_date'),
+                                    'is_current': exp.get('end_date') == 'Present',
+                                    'description': exp.get('description', '')
+                                })
+                            
+                            # Update candidate data with mapped information
+                            candidate_data['skills'] = mapped_skills
+                            candidate_data['education'] = mapped_education
+                            candidate_data['experience'] = mapped_experience
+                            
+                            print(f"✅ Resume parsed and mapped successfully for {candidate_data['resume_name']}")
+                            print(f"   🎯 Mapped {len(mapped_skills)} skills")
+                            print(f"   🎓 Mapped {len(mapped_education)} education entries")
+                            print(f"   💼 Mapped {len(mapped_experience)} experience entries")
                         
                     except Exception as parse_error:
                         print(f"❌ Error parsing resume {candidate_data['resume_name']}: {parse_error}")
@@ -384,20 +391,52 @@ def process_ranking(job_id):
                         candidate_data['experience'] = []
                 
                 # Calculate scores
-                skill_score = ai_service.calculate_skill_match(
-                    candidate_data['skills'], 
-                    job_data['required_skills']
-                )
-                
-                education_score = ai_service.calculate_education_match(
-                    candidate_data['education'], 
-                    job_data['required_education']
-                )
-                
-                experience_score = ai_service.calculate_experience_match(
-                    candidate_data['experience'], 
-                    job_data['required_experience']
-                )
+                # For resume uploads, use default scoring since job requirements are empty
+                if job_data.get('required_skills') == '[]' or not job_data.get('required_skills'):
+                    # More sophisticated scoring for resume uploads
+                    # Skills scoring: based on quantity and quality
+                    skill_count = len(candidate_data['skills'])
+                    technical_skills = len([s for s in candidate_data['skills'] if s.get('category') == 'technical'])
+                    skill_score = min((skill_count * 8) + (technical_skills * 5), 100)  # More weight to technical skills
+                    
+                    # Education scoring: based on degree level and field relevance
+                    education_score = 50  # Base score
+                    for edu in candidate_data['education']:
+                        degree = edu.get('degree', '').lower()
+                        field = edu.get('field_of_study', '').lower()
+                        if any(keyword in degree for keyword in ['b.tech', 'm.tech', 'msc', 'phd']):
+                            education_score += 25
+                        if any(keyword in field for keyword in ['computer science', 'software engineering', 'information technology']):
+                            education_score += 15
+                        elif any(keyword in field for keyword in ['engineering', 'science']):
+                            education_score += 10
+                    education_score = min(education_score, 100)
+                    
+                    # Experience scoring: based on years and relevance
+                    experience_score = 0
+                    for exp in candidate_data['experience']:
+                        years = exp.get('duration_months', 0) / 12
+                        title = exp.get('job_title', '').lower()
+                        if any(keyword in title for keyword in ['engineer', 'developer', 'software', 'programmer']):
+                            experience_score += min(years * 15, 40)  # More points for relevant roles
+                        else:
+                            experience_score += min(years * 8, 20)  # Less points for other roles
+                    experience_score = min(experience_score, 100)
+                else:
+                    skill_score = ai_service.calculate_skill_match(
+                        candidate_data['skills'], 
+                        job_data['required_skills']
+                    )
+                    
+                    education_score = ai_service.calculate_education_match(
+                        candidate_data['education'], 
+                        job_data['required_education']
+                    )
+                    
+                    experience_score = ai_service.calculate_experience_match(
+                        candidate_data['experience'], 
+                        job_data['required_experience']
+                    )
                 
                 # Calculate total score (40% skills, 30% education, 30% experience)
                 total_score = (skill_score * 0.4) + (education_score * 0.3) + (experience_score * 0.3)
@@ -424,9 +463,17 @@ def process_ranking(job_id):
                     education_score = VALUES(education_score),
                     experience_score = VALUES(experience_score),
                     total_score = VALUES(total_score),
+                    rank_position = VALUES(rank_position),
                     score_breakdown = VALUES(score_breakdown),
                     is_resume_upload = VALUES(is_resume_upload)
                     """
+                    
+                    # Create comprehensive score_breakdown with parsed resume data
+                    score_breakdown_data = {
+                        **scores,
+                        'resume_data': candidate_data  # Include the full parsed resume data
+                    }
+                    
                     db.execute_query(ranking_query, (
                         job_id, 
                         application['candidate_id'],  # This is the resume ID
@@ -435,7 +482,7 @@ def process_ranking(job_id):
                         experience_score,
                         total_score,
                         i + 1,  # rank_position
-                        json.dumps(scores)
+                        json.dumps(score_breakdown_data)  # Store scores + parsed data
                     ))
                 else:
                     # For regular applications
@@ -464,24 +511,9 @@ def process_ranking(job_id):
                 
                 # Store feedback
                 if application.get('is_resume_upload'):
-                    # For resume uploads, use candidate_id instead of application_id since there's no application record
-                    feedback_query = """
-                    INSERT INTO feedback 
-                    (candidate_id, strengths, missing_skills, suggestions, overall_assessment)
-                    VALUES (%s, %s, %s, %s, %s)
-                    ON DUPLICATE KEY UPDATE
-                    strengths = VALUES(strengths),
-                    missing_skills = VALUES(missing_skills),
-                    suggestions = VALUES(suggestions),
-                    overall_assessment = VALUES(overall_assessment)
-                    """
-                    db.execute_query(feedback_query, (
-                        application['candidate_id'],  # Use candidate_id for resume uploads
-                        feedback.get('strengths', ''),
-                        feedback.get('missing_skills', ''),
-                        feedback.get('suggestions', ''),
-                        feedback.get('overall_assessment', '')
-                    ))
+                    # For resume uploads, skip feedback insertion since there's no application record
+                    # The feedback is stored in the rankings table score_breakdown field instead
+                    print(f"📝 Skipping feedback insertion for resume upload {application['candidate_id']}")
                 else:
                     # For regular applications, use application_id
                     feedback_query = """
@@ -503,8 +535,10 @@ def process_ranking(job_id):
                     ))
                 
                 rankings.append({
-                    'application_id': application['id'],
-                    'total_score': total_score
+                    'application_id': application.get('id') if not application.get('is_resume_upload') else None,
+                    'candidate_id': application.get('candidate_id') if application.get('is_resume_upload') else application['id'],
+                    'total_score': total_score,
+                    'is_resume_upload': application.get('is_resume_upload', False)
                 })
                 
                 # Update progress
@@ -525,12 +559,20 @@ def process_ranking(job_id):
         # Update rankings with positions
         rankings.sort(key=lambda x: x['total_score'], reverse=True)
         for position, ranking in enumerate(rankings, 1):
-            # Update ranking position using application_id
-            db.execute_query("""
-                UPDATE rankings 
-                SET rank_position = %s 
-                WHERE job_id = %s AND application_id = %s
-            """, (position, job_id, ranking['application_id']))
+            if ranking['is_resume_upload']:
+                # Update ranking position using candidate_id for resume uploads
+                db.execute_query("""
+                    UPDATE rankings 
+                    SET rank_position = %s 
+                    WHERE job_id = %s AND candidate_id = %s AND is_resume_upload = 1
+                """, (position, job_id, ranking['candidate_id']))
+            else:
+                # Update ranking position using application_id for regular applications
+                db.execute_query("""
+                    UPDATE rankings 
+                    SET rank_position = %s 
+                    WHERE job_id = %s AND application_id = %s
+                """, (position, job_id, ranking['application_id']))
         
         # Update application statuses
         db.execute_query("""

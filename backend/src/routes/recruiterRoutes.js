@@ -604,6 +604,22 @@ router.get('/resumes/:id/details', authenticateToken, authorizeRole('recruiter')
     
     console.log('💬 Feedback query result:', feedback.length, 'records');
     
+    // Parse score_breakdown to get AI-extracted data
+    let parsedData = null;
+    if (ranking.length > 0 && ranking[0].score_breakdown) {
+      try {
+        const scoreBreakdown = ranking[0].score_breakdown;
+        if (typeof scoreBreakdown === 'string') {
+          parsedData = JSON.parse(scoreBreakdown);
+        } else if (scoreBreakdown && typeof scoreBreakdown === 'object') {
+          parsedData = scoreBreakdown;
+        }
+        console.log('🤖 Parsed resume data:', parsedData);
+      } catch (error) {
+        console.error('❌ Error parsing score_breakdown:', error);
+      }
+    }
+    
     // Construct candidate-like response
     const candidateData = {
       id: resumeInfo.id,
@@ -639,11 +655,46 @@ router.get('/resumes/:id/details', authenticateToken, authorizeRole('recruiter')
         feedback_created_at: feedback[0].created_at
       }),
       
-      // Empty arrays for compatibility
-      applications: [],
-      skills: [],
-      education: [],
-      experience: [],
+      // Add parsed AI data if available
+      ...(parsedData && {
+        personal_info: parsedData.personal_info,
+        skills: parsedData.skills || [],
+        education: parsedData.education || [],
+        experience: parsedData.experience || [],
+        projects: parsedData.projects || [],
+        certifications: parsedData.certifications || []
+      }),
+      
+      // If no parsed data, show raw database data for debugging
+      ...(!parsedData && {
+        raw_ranking_data: ranking.length > 0 ? {
+          score_breakdown: ranking[0].score_breakdown,
+          total_score: ranking[0].total_score,
+          skill_score: ranking[0].skill_score,
+          education_score: ranking[0].education_score,
+          experience_score: ranking[0].experience_score,
+          rank_position: ranking[0].rank_position,
+          ranked_at: ranking[0].ranked_at
+        } : null,
+        raw_resume_data: {
+          id: resumeInfo.id,
+          original_name: resumeInfo.original_name,
+          filename: resumeInfo.filename,
+          file_size: resumeInfo.file_size,
+          uploaded_at: resumeInfo.uploaded_at
+        }
+      }),
+      
+      // Empty arrays for compatibility if no parsed data
+      ...(!parsedData && {
+        applications: [],
+        skills: [],
+        education: [],
+        experience: [],
+        projects: [],
+        certifications: []
+      }),
+      
       stats: {
         totalApplications: 0,
         pendingApplications: 0,

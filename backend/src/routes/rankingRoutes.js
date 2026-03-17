@@ -5,6 +5,39 @@ const db = require('../config/database');
 const { authenticateToken, authorizeRole } = require('../middleware/auth');
 const { asyncHandler } = require('../middleware/errorHandler');
 
+// Clean all ranking data (for testing)
+router.delete('/clean', authenticateToken, authorizeRole('recruiter'), asyncHandler(async (req, res) => {
+  try {
+    console.log('🧹 Cleaning all ranking data...');
+    
+    const recruiterId = req.user.id;
+    
+    // Delete rankings (cascade will handle feedback)
+    await db.query('DELETE FROM rankings WHERE job_id IN (SELECT id FROM jobs WHERE recruiter_id = ?)', [recruiterId]);
+    
+    // Delete recruiter resumes
+    await db.query('DELETE FROM recruiter_resumes WHERE recruiter_id = ?', [recruiterId]);
+    
+    // Delete applications (optional - keep jobs)
+    await db.query('DELETE FROM applications WHERE job_id IN (SELECT id FROM jobs WHERE recruiter_id = ?)', [recruiterId]);
+    
+    console.log('✅ Ranking data cleaned successfully');
+    
+    res.json({
+      success: true,
+      message: 'All ranking data cleaned successfully'
+    });
+    
+  } catch (error) {
+    console.error('❌ Error cleaning ranking data:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to clean ranking data',
+      error: error.message
+    });
+  }
+}));
+
 // Trigger AI ranking for a job
 router.post('/trigger', authenticateToken, authorizeRole('recruiter'), asyncHandler(async (req, res) => {
   try {
