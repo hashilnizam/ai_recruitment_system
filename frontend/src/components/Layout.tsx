@@ -118,7 +118,7 @@ export default function Layout({ children }: LayoutProps) {
       {/* Main Content */}
       <main className="ml-64 min-h-screen">
         {/* Header */}
-        <header className="bg-white border-b border-gray-200 sticky top-0 z-30 shadow-sm">
+        <header className="bg-white sticky top-0 z-30 shadow-sm">
           <div className="px-8 py-4 flex items-center justify-between">
             <div>
               <h2 className="text-2xl font-bold text-gray-900">

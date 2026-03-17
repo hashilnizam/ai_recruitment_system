@@ -385,7 +385,7 @@ export default function RankingResultsPage() {
 
   return (
     <Layout>
-      <div className="space-y-6 animate-fade-in">
+      <div className="animate-fade-in">
         {/* Header */}
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-4">
@@ -430,7 +430,7 @@ export default function RankingResultsPage() {
         </div>
 
         {/* Status Card */}
-        <div className={`rounded-xl p-6 border-2 ${
+        <div className={`mt-6 rounded-xl p-6 border-2 ${
           rankingStatus === 'completed' ? 'bg-green-50 border-green-200' :
           rankingStatus === 'processing' ? 'bg-blue-50 border-blue-200' :
           rankingStatus === 'error' ? 'bg-red-50 border-red-200' :
@@ -484,7 +484,7 @@ export default function RankingResultsPage() {
         </div>
 
         {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+        <div className="mt-6 grid grid-cols-1 md:grid-cols-4 gap-6">
           <div className="bg-white rounded-xl p-6 shadow-sm">
             <div className="flex items-center justify-between">
               <div>
@@ -577,7 +577,7 @@ export default function RankingResultsPage() {
 
         {/* Ranked Candidates */}
         {rankedCandidates.length > 0 && (
-          <div className="space-y-6">
+          <div className="mt-6 space-y-6">
             {/* Ranked Resumes Section */}
             <div className="bg-white rounded-xl shadow-sm overflow-hidden">
               <div className="p-6 border-b border-gray-200 bg-gradient-to-r from-purple-50 to-indigo-50">
@@ -802,7 +802,7 @@ export default function RankingResultsPage() {
 
         {/* Unranked Candidates */}
         {unrankedCandidates.length > 0 && (
-          <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+          <div className="mt-6 bg-white rounded-xl shadow-sm overflow-hidden">
             <div className="p-6 border-b border-gray-200 bg-gradient-to-r from-gray-50 to-blue-50">
               <div className="flex items-center justify-between">
                 <div className="flex items-center">
@@ -872,7 +872,7 @@ export default function RankingResultsPage() {
 
       {/* Resume View Modal */}
       {showResumeModal && selectedResume && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+        <div className="fixed inset-0 bg-gray-900/10 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-xl max-w-4xl w-full max-h-[90vh] overflow-hidden">
             {/* Modal Header */}
             <div className="bg-gradient-to-r from-purple-600 to-blue-600 p-6 text-white">
