@@ -417,14 +417,15 @@ def process_ranking(job_id):
                     # For recruiter resumes - use NULL for application_id since there's no application record
                     ranking_query = """
                     INSERT INTO rankings 
-                    (job_id, candidate_id, application_id, skill_score, education_score, experience_score, total_score, rank_position, score_breakdown)
-                    VALUES (%s, %s, NULL, %s, %s, %s, %s, %s, %s)
+                    (job_id, application_id, candidate_id, skill_score, education_score, experience_score, total_score, rank_position, score_breakdown, is_resume_upload)
+                    VALUES (%s, NULL, %s, %s, %s, %s, %s, %s, %s, 1)
                     ON DUPLICATE KEY UPDATE
                     skill_score = VALUES(skill_score),
                     education_score = VALUES(education_score),
                     experience_score = VALUES(experience_score),
                     total_score = VALUES(total_score),
-                    score_breakdown = VALUES(score_breakdown)
+                    score_breakdown = VALUES(score_breakdown),
+                    is_resume_upload = VALUES(is_resume_upload)
                     """
                     db.execute_query(ranking_query, (
                         job_id, 

@@ -188,13 +188,13 @@ router.get('/job/:jobId', authenticateToken, authorizeRole('recruiter'), asyncHa
         true as is_resume_upload
       FROM recruiter_resumes rr
       LEFT JOIN rankings r ON rr.id = r.candidate_id AND r.job_id = ?
-      LEFT JOIN feedback f ON rr.id = f.candidate_id AND f.job_id = ?
+      LEFT JOIN feedback f ON rr.id = f.candidate_id
       WHERE rr.recruiter_id = ?
       
       ORDER BY total_score DESC, applied_at DESC
     `;
 
-    const rankings = await db.query(rankingsQuery, [jobId, jobId, jobId, recruiterId]);
+    const rankings = await db.query(rankingsQuery, [jobId, jobId, recruiterId]);
 
     console.log(`✅ Retrieved ${rankings.length} rankings for job ${jobId}`);
 

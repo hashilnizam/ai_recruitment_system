@@ -116,6 +116,8 @@ Wait for: "🚀 Server running on port 5000"
 cd ai-service
 source venv/bin/activate  # Windows: venv\Scripts\activate
 python app.py
+
+taskkill /F /IM python.exe   #To kill python service
 ```
 Wait for: "🤖 AI Service starting on port 5001"
 

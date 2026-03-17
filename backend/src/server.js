@@ -53,7 +53,7 @@ app.use(cors({
   credentials: true
 }));
 
-// Rate limiting (excluding AI ranking endpoint)
+// Rate limiting (excluding AI ranking and recruiter endpoints)
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 100, // limit each IP to 100 requests per windowMs
@@ -62,8 +62,21 @@ const limiter = rateLimit({
     message: 'Too many requests from this IP, please try again later.'
   },
   skip: (req) => {
-    // Skip rate limiting for AI ranking endpoint
-    return req.path === '/api/recruiter/trigger-ranking';
+    // Skip rate limiting for AI ranking and recruiter endpoints (for development)
+    const skipPaths = [
+      '/api/recruiter/trigger-ranking',
+      '/api/recruiter/resumes',
+      '/api/recruiter/dashboard',
+      '/api/rankings'
+    ];
+    const shouldSkip = skipPaths.some(path => req.path.startsWith(path)) || 
+                      process.env.NODE_ENV === 'development';
+    
+    if (shouldSkip) {
+      console.log(`🔓 Skipping rate limit for: ${req.path}`);
+    }
+    
+    return shouldSkip;
   }
 });
 app.use('/api/', limiter);

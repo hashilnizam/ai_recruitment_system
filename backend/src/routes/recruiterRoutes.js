@@ -724,10 +724,18 @@ router.post('/stop-ranking', authenticateToken, asyncHandler(async (req, res) =>
     const recruiterId = req.user.id;
     
     // Update processing status to stopped for this recruiter
-    db.query(
-      'UPDATE processing_jobs SET status = "stopped", completed_at = NOW() WHERE recruiter_id = ? AND status = "processing"',
+    // Find the most recent job for this recruiter and stop its processing
+    const recentJob = await db.query(
+      'SELECT id FROM jobs WHERE recruiter_id = ? ORDER BY created_at DESC LIMIT 1',
       [recruiterId]
     );
+    
+    if (recentJob && recentJob.length > 0) {
+      await db.query(
+        'UPDATE processing_jobs SET status = "stopped", completed_at = NOW() WHERE job_id = ? AND status = "processing"',
+        [recentJob[0].id]
+      );
+    }
     
     res.json({
       success: true,

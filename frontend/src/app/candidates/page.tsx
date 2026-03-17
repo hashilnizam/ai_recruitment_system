@@ -126,34 +126,61 @@ export default function CandidatesPage() {
           setRankingProgress(estimatedProgress);
           console.log(`📊 Progress updated to: ${estimatedProgress}%`);
           
+          // Fetch fresh data
           await fetchData();
           
-          // Get fresh candidates data and check if any have rankings
-          const freshCandidates = candidates;
-          const rankedCandidates = freshCandidates.filter((c: any) => 
-            c.rank_position !== null && c.rank_position !== undefined && c.rank_position > 0
-          );
+          // Wait a moment for state to update
+          await new Promise(resolve => setTimeout(resolve, 500));
           
-          console.log(`Poll ${pollCount}: Found ${rankedCandidates.length} ranked candidates out of ${freshCandidates.length} total`);
-          
-          if (rankedCandidates.length > 0 || pollCount >= maxPolls) {
-            clearInterval(pollInterval);
-            setRankingProgress(100);
-            setRankingInProgress(false);
-            await fetchData(); // Final refresh
+          // Check if we have ranked candidates by looking at the latest fetch results
+          // We need to directly check rankings API since candidates state might be stale
+          try {
+            const token = localStorage.getItem('token');
+            const jobsResponse = await jobsAPI.getJobs({ recruiterId: user?.id });
+            const jobsList = jobsResponse.data?.data || [];
             
-            if (rankedCandidates.length > 0) {
-              setRankingMessage(`✅ AI ranking completed! ${rankedCandidates.length} candidates ranked`);
-            } else {
-              setRankingMessage('⏱️ AI ranking timed out. Click "Check Results" to try again.');
+            let totalRankedCandidates = 0;
+            for (const job of jobsList) {
+              const rankingsResponse = await fetch(`/api/rankings/job/${job.id}`, {
+                headers: {
+                  'Authorization': `Bearer ${token}`,
+                  'Content-Type': 'application/json'
+                }
+              });
+              
+              if (rankingsResponse.ok) {
+                const rankingsData = await rankingsResponse.json();
+                const rankedCandidates = rankingsData.data || [];
+                totalRankedCandidates += rankedCandidates.filter((c: any) => 
+                  c.rank_position && c.rank_position > 0
+                ).length;
+              }
             }
             
-            // Hide success message after 5 seconds
-            setTimeout(() => {
-              setRankingSuccess(false);
-              setRankingMessage('');
-              setRankingProgress(0);
-            }, 5000);
+            console.log(`Poll ${pollCount}: Found ${totalRankedCandidates} ranked candidates across all jobs`);
+            
+            if (totalRankedCandidates > 0 || pollCount >= maxPolls) {
+              clearInterval(pollInterval);
+              setRankingProgress(100);
+              setRankingInProgress(false);
+              await fetchData(); // Final refresh to update UI
+              
+              if (totalRankedCandidates > 0) {
+                setRankingMessage(`✅ AI ranking completed! ${totalRankedCandidates} candidates ranked`);
+              } else {
+                setRankingMessage('⏱️ AI ranking timed out. Click "Check Results" to try again.');
+              }
+              
+              // Hide success message after 10 seconds (but keep progress and results)
+              setTimeout(() => {
+                setRankingSuccess(false);
+                setRankingMessage('');
+                // Don't reset progress - keep it at 100% to show completion
+                // setRankingProgress(0);
+              }, 10000);
+            }
+          } catch (error) {
+            console.error('Error checking rankings:', error);
           }
         }, 10000); // 10 seconds polling
         
@@ -190,90 +217,117 @@ export default function CandidatesPage() {
   const fetchData = async () => {
     try {
       setLoading(true);
+      console.log('🔍 fetchData: Starting data fetch...');
       
       // Fetch recruiter's jobs
       const jobsResponse = await jobsAPI.getJobs({ recruiterId: user?.id });
       const jobsList = jobsResponse.data?.data || [];
       setJobs(jobsList);
+      
+      console.log(`📊 Found ${jobsList.length} jobs:`, jobsList.map(j => ({ id: j.id, title: j.title })));
 
-      // Fetch all applications for all jobs
+      // Fetch rankings for each job
       const allCandidates: any[] = [];
+      
       for (const job of jobsList) {
+        console.log(`📊 Fetching rankings for job ${job.id} (${job.title})...`);
+        
         try {
-          const appsResponse = await applicationsAPI.getJobApplications(job.id);
-          const applications = appsResponse.data?.data || [];
+          const rankingsResponse = await fetch(`/api/rankings/job/${job.id}`, {
+            headers: {
+              'Authorization': `Bearer ${localStorage.getItem('token')}`,
+              'Content-Type': 'application/json'
+            }
+          });
           
-          applications.forEach((app: any) => {
+          console.log(`📊 Rankings API response status: ${rankingsResponse.status}`);
+          
+          if (!rankingsResponse.ok) {
+            console.error(`❌ Rankings API failed for job ${job.id}:`, rankingsResponse.statusText);
+            continue;
+          }
+          
+          const rankingsData = await rankingsResponse.json();
+          const rankedCandidates = rankingsData.data || [];
+          
+          console.log(`📊 Job ${job.id}: Found ${rankedCandidates.length} ranked candidates`);
+          
+          // Add all ranked candidates
+          rankedCandidates.forEach((candidate: any) => {
             allCandidates.push({
-              ...app,
+              ...candidate,
               jobTitle: job.title,
               jobId: job.id,
-              candidate_id: app.candidate_id,
-              status: app.application_status || app.status || 'pending',
-              total_score: app.total_score,
-              skill_score: app.skill_score,
-              education_score: app.education_score,
-              experience_score: app.experience_score,
-              rank_position: app.rank_position
+              status: candidate.rank_position ? 'ranked' : 'pending',
+              total_score: candidate.total_score,
+              skill_score: candidate.skill_score,
+              education_score: candidate.education_score,
+              experience_score: candidate.experience_score,
+              rank_position: candidate.rank_position
             });
           });
+          
         } catch (error) {
-          console.error(`Error fetching applications for job ${job.id}:`, error);
+          console.error(`❌ Error fetching rankings for job ${job.id}:`, error);
         }
       }
-
-      // Fetch recruiter resumes with ranking data
+      
+      // Also get resumes for direct uploads
       try {
+        console.log('📄 Fetching resume uploads...');
         const resumesResponse = await recruiterAPI.getResumes();
         const resumes = resumesResponse.data || [];
         
-        // Fetch ranking data for most recent job
-        const recentJob = jobsList[jobsList.length - 1]; // Get last job (usually for ranking)
-        let rankings = [];
-        
+        // Get most recent job for resume rankings
+        const recentJob = jobsList[jobsList.length - 1];
         if (recentJob) {
+          console.log(`📄 Fetching rankings for resumes (job ${recentJob.id})...`);
           try {
-            const rankingsResponse = await fetch(`/api/rankings/job/${recentJob.id}`, {
+            const resumeRankingsResponse = await fetch(`/api/rankings/job/${recentJob.id}`, {
               headers: {
                 'Authorization': `Bearer ${localStorage.getItem('token')}`,
                 'Content-Type': 'application/json'
               }
             });
-            const rankingsData = await rankingsResponse.json();
-            rankings = rankingsData.data || [];
+            
+            if (resumeRankingsResponse.ok) {
+              const resumeRankingsData = await resumeRankingsResponse.json();
+              const resumeRankings = resumeRankingsData.data || [];
+              
+              resumes.forEach((resume: any) => {
+                const ranking = resumeRankings.find((r: any) => r.candidate_id === resume.id);
+                
+                allCandidates.push({
+                  ...resume,
+                  first_name: resume.original_name?.split('.')[0] || 'Unknown',
+                  last_name: '',
+                  email: 'resume-upload@system.com',
+                  jobTitle: 'Direct Resume Upload',
+                  jobId: recentJob?.id || 0,
+                  candidate_id: resume.id,
+                  status: ranking?.rank_position ? 'ranked' : 'pending',
+                  total_score: ranking?.total_score || null,
+                  skill_score: ranking?.skill_score || null,
+                  education_score: ranking?.education_score || null,
+                  experience_score: ranking?.experience_score || null,
+                  rank_position: ranking?.rank_position || null,
+                  applied_at: resume.uploaded_at,
+                  isResumeUpload: true,
+                  feedback: ranking?.overall_assessment || ranking?.suggestions || null
+                });
+              });
+            }
           } catch (error) {
-            console.log('No rankings found yet');
+            console.log('No resume rankings found yet');
           }
         }
-        
-        resumes.forEach((resume: any) => {
-          // Find ranking for this resume
-          const ranking = rankings.find((r: any) => r.candidate_id === resume.id);
-          
-          allCandidates.push({
-            ...resume,
-            first_name: resume.original_name?.split('.')[0] || 'Unknown',
-            last_name: '',
-            email: 'resume-upload@system.com',
-            jobTitle: 'Direct Resume Upload',
-            jobId: recentJob?.id || 0,
-            candidate_id: resume.id,
-            status: 'pending',
-            total_score: ranking?.total_score || null,
-            skill_score: ranking?.skill_score || null,
-            education_score: ranking?.education_score || null,
-            experience_score: ranking?.experience_score || null,
-            rank_position: ranking?.rank_position || null,
-            applied_at: resume.uploaded_at,
-            isResumeUpload: true,
-            feedback: ranking?.overall_assessment || ranking?.suggestions || null
-          });
-        });
       } catch (error) {
         console.error('Error fetching recruiter resumes:', error);
       }
       
-      // Sort candidates by score (ranked candidates first)
+      console.log(`📊 Total candidates fetched: ${allCandidates.length}`);
+      
+      // Sort candidates by rank position (ranked candidates first)
       allCandidates.sort((a, b) => {
         if (a.rank_position && b.rank_position) {
           return a.rank_position - b.rank_position;
@@ -288,8 +342,12 @@ export default function CandidatesPage() {
       setTopRankedCandidates(topRanked);
       
       setCandidates(allCandidates);
+      
+      console.log('🎉 fetchData completed successfully');
+      console.log(`📊 Final counts: ${allCandidates.length} total, ${topRanked.length} top ranked`);
+      
     } catch (error) {
-      console.error('Error fetching data:', error);
+      console.error('❌ Error in fetchData:', error);
       // Ensure jobs is never undefined
       setJobs([]);
       setCandidates([]);
